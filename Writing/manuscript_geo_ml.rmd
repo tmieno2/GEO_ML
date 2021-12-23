@@ -1,0 +1,310 @@
+---
+title: "Economic Evaluation of Geographically Weighted Regression Analysis of Site-specific Nitrogen Management"
+author:
+  - Taro Mieno^[University of Nebraska Lincoln, tmieno2@unl.edu], Xiaofei Li^[Mississippi State University, xiaofei.li@msstate.edu], David Bullock^[University of Illinois, dsbulloc@illinois.edu]
+output:
+  officedown::rdocx_document:
+    toc: false
+    toc_depth: 1
+    number_sections: true
+    reference_docx: "word_template.docx"
+    plots:
+      style: Normal
+      align: center
+      caption:
+       style: Image Caption
+       pre: "Figure "
+       sep: ": "
+    tables:
+      style: Table
+      layout: autofit
+      width: 1.0
+      caption:
+       style: Table Caption
+       pre: "Table "
+       sep: ": "
+bibliography: PA.bib
+abstract: ""
+---
+
+```{r echo = F, cache = F}
+suppressMessages(library(knitr))
+suppressMessages(library(here))
+suppressMessages(library(officedown))
+suppressMessages(library(officer))
+
+opts_chunk$set(
+  fig.align = "center",
+  fig.retina = 5,
+  warning = F,
+  message = F,
+  cache = F,
+  echo = F,
+  fig.cap = TRUE
+)
+```
+
+```{r cache = F}
+#--- packages ---#
+library(data.table)
+library(tidyverse)
+library(flextable)
+library(stringr)
+library(sf)
+library(lfe)
+library(modelsummary)
+library(patchwork)
+```
+
+```{r figure_setup, cache = F}
+theme_update(
+  axis.title.x =
+    element_text(
+      size = 12, angle = 0, hjust = .5, vjust = -0.3, face = "plain"
+    ),
+  axis.title.y =
+    element_text(
+      size = 12, angle = 90, hjust = .5, vjust = .9, face = "plain"
+    ),
+  axis.text.x =
+    element_text(
+      size = 10, angle = 0, hjust = .5, vjust = 1.5, face = "plain"
+    ),
+  axis.text.y =
+    element_text(
+      size = 10, angle = 0, hjust = 1, vjust = 0, face = "plain"
+    ),
+  axis.ticks =
+    element_line(
+      size = 0.3, linetype = "solid"
+    ),
+  axis.ticks.length = unit(.15, "cm"),
+  #--- legend ---#
+  legend.text =
+    element_text(
+      size = 10, angle = 0, hjust = 0, vjust = 0, face = "plain"
+    ),
+  legend.title =
+    element_text(
+      size = 10, angle = 0, hjust = 0, vjust = 0, face = "plain"
+    ),
+  legend.key.size = unit(0.5, "cm"),
+  #--- strip (for faceting) ---#
+  strip.text = element_text(size = 10),
+  #--- plot title ---#
+  plot.title = element_text(family = "Times", face = "bold", size = 12),
+  #--- margin ---#
+  # plot.margin = margin(0, 0, 0, 0, "cm"),
+  #--- panel ---#
+  panel.grid.major = element_blank(),
+  panel.grid.minor = element_blank(),
+  panel.background = element_blank(),
+  panel.border = element_rect(fill = NA)
+)
+```
+
+```{r include = FALSE}
+# /*===========================================================
+#' # Prepare data and results for writing 
+# /*===========================================================
+#* source all the functions in the Functions folder  
+fs::dir_ls(here("Codes", "Functions"), full.names = TRUE) %>%
+lapply(., function(x) source(x))
+
+#* read the results rds file 
+results <-
+  here("Results", "pi_data.rds") %>%
+  readRDS() %>%
+  .[, type := ifelse(transfer == 0, "GWR-R", "GWR-T")] %>%
+  .[, bias := pi_diff_est - pi_diff]
+
+#* create figures
+source(here("Codes", "3_make_figures_publication.R"))
+
+```
+
+# Introduction
+
+In recent years, On-farm Precision Exeperimentation (OFPE) has gained much tractions from both researchers and practitioners as a means to generate high-resolution spatial data to inform site-specific management decisions. Simultaneously, there are surging interests among researchers in identifying efficient statistical methods to estimate site-specific yield response functions ranging from Geographically Weighted Regression (GWR) [@rakshit2020, @evans2020assessment, @trevisan2021spatial] to machine learning methods including Random Forest [@krause2020random], Convolutional Neural Network [@barbosa2020modeling]. Among these new strands of methods applied to OFPE data, GWR is distinct from other methods in that it does not require potentially costly collection of site-specific field and soil information in estimating site-specific yield response function. 
+
+On any given field, it is typical for U.S. Midwestern row crop farmers to pay for 1-ha grid soil sampling and chemical analysis every three or four years [@morris2018strengths]. The data is often used to derive fertilizer application recommendations, for example by applying comparatively simple formulas provided by university Extension services (e.g., Culman, et al. 2020).  But the expense of soil sampling and analysis is driving development of sensor technologies that gather data on site-specific field and crop characteristics, or of proxies of those characteristics.  For example, Trimble Agriculture's GreenSeeker and AgLeader's OptRx® systems use optical sensors mounted on fertilizer application booms to digitally record vegetative index imagery as farm machinery is driven through fields during early crop growth stages.  GreenSeeker then uses the Oklahoma State University's Sensor-based N Rate Calculator to convert those data into recommended nitrogen fertilizer (N) Rxs. Veris Technologies manufactures sensor equipment that can be towed through fields to gather apparent electroconductivity (EC) data, which can be used to infer properties of soil content.  The "decision tool" software FieldRevealTM allows users to upload EC data, elevation data, and vegetative index data, which FieldRevealTM's professional agronomists analyze to provide Rxs to farmers.  FieldApex creates N Rxs using foliar vegetative index data from satellite imagery, and SlantRange uses drone imagery for similar purposes.
+
+However, deploying sophisticated sensors to gather field characteristics data is also costly, and the effects of their generation and use on farm profitability remains in question [@gardner2021economic]. Recognizing the significant costs of obtaining useful, high-resolution soil and field properties data, @trevisan2021spatial demonstrated a method of providing site specific management recommendations without such data. The study estimated site-specific yield response functions by applying Geographically Weighted Regression (GWR) techniques on data from OFPEs [@bullock2019data]. @trevisan2021spatial reported dramatic results, estimating an average potential gain of \$65 ha-1 from applying seed and N at optimal uniform rates (instead of at the rates the farmers would have chosen if not participating in the research), and an additional potential gain of \$58 ha 1 when changing from optimal uniform application rates to optimal site-specific application rates. @rakshit2020 also applied GWR on on-farm experiment data. However, while they estimated site-specific yield response functions, they did not derive site-specific economically optimal nitrogen rates based on them, and thus did not do any economic analysis unlike @trevisan2021spatial. @evans2020assessment used GWR for an exploratory purpose to detect low and high response areas with a linear model specification, and did not provide site-specific economically optimal nitrogen rates either. 
+
+This study has two key objectives. First, this study examines which of the model specifications used by @rakshit2020 and @trevisan2021spatial result in more profitable site-specific nitrogen rate recommendations. While both @rakshit2020 and @trevisan2021spatial propose using GWR for site-specific yield response functions for coming up with economically optimal EONR, they are different in a subtle yet important way: specifically, their model specifications. Both of them use a quadratic function of nitrogen rate ($N$). However, while @trevisan2021spatial estimates the coefficient on $N^2$ as a global parameter, @rakshit2020 estimate the coefficient on $N^2$ locally for each point. At first, it appears that the specification used by @rakshit2020 is superior as their specification is more flexible than that by @trevisan2021spatial. However, the flexibility can be a disadvantage rather than an advantage because the estimation of EONR is highly sensitive to the coefficient estimates on $N^2$ and GWR is rather inaccurate in estimating the coefficient estimates on $N^2$ locally. 
+
+Second, we will examine the degree and direction of bias in the estimation of the value of GWR-based VRA. Even though @trevisan2021spatial reported extrememely high values of GWR-based VRA over URA, it is  questionable GWR is indeed as valuable as estimated by @trevisan2021spatial. In general, researchers follow the following steps to estimate the value of VRA based using OFPE data [e.g., @swinton1998evaluating; @bullock2002adding; @anselin2004spatial; @liu2006site]: (1) estimate site-specific yield response functions based on a method chosen by the researcher, (2) find the economically optimal site-specific input rates and uniform input rates based on the estimated yield response functions, (3) assume the estimated yield response functions as the true yield response functions and plug in the estimated site-specific EOIRs and uniform EOIR to the estimated yield response functions to calculate profits for both strategies, and (4) find the difference in profits between the two strategies. However, this approach can result in significant bias in the estimation of the value of VRA because of the assumption made at step (3): the estimated yield response functions are the true yield response functions. @trevisan2021spatial is no exception. At step (3), they used their estimated GWR as the true yield response functions. This assumption is generally unavoidable for researcher as we never observe true yield response function of any real field. However, it is important to be aware of potential dangers of making this assumption. This bias problem can be particularly severe when the method tend to exaggerate the true heterogeneity in yield response functions. We suspect that the value of VRA estimated by @trevisan2021spatial suffer from this bias problem. 
+
+To achieve the two objectives, we will use Monte Carlo simulations. We cannot test which model specification results in more profitable site-specific nitrogen rate recommendations using real data because we never observe the true yield response functions. For the same reason, we cannot test whether @trevisan2021spatial over-estimates the actual value of VRA, either. However, we can examine which model specification "tends" to performs better and whether the estimation of the value of GWR-based VRA "tend" to suffer from this type of bias using Monte Carlo simulation. In Monte Carlo simulation, true yield response functions are generated by the researcher and thus known, which in turn allows the researchers to numerically quantify the true value of GWR and the bias caused by the estimation in the value of GWR-based VRA. Monte Carlo simulations are commonly used to gain insights into the statistical property of trial designs and estimations methods [@mckinion2001analysis; @gebbers2010application; @bullock2020value; @alesso2021design].
+
+One of the principal findings of this article is that the model specification used by @trevisan2021spatial is much more profitable than that used by @rakshit2020. This is primarily due to GWR's inability to estimate reliably the coefficients on $N^2$ locally. Since the coefficients on $N^2$ is highly influential in determining EONR, inaccuracy in their estimation can result in unreliable EONR recommendation, which then can lead to significant economic loss. While @trevisan2021spatial provides better economic outcomes, the benefit of VRA over URA is rather small at about $5 per ha on average. We also found that the estimation of the value of VRA following @rakshit2020 and @trevisan2021spatial leads to significant over-estimation of its actual value as suspected. The prospect of GWR as a means for generating site-specific input recommendation is much bleaker than presented by @trevisan2021spatial in reality. Given the significant bias one will have, researchers need to be careful not to over-promote the GWR-based approach. 
+
+# Method and Material
+
+## Experimental Field Layout
+
+Figure \@ref(fig:field-layout) shows the field layout and defines spatial units of the simulated on-farm precision experiments in this study. The basic spatial unit of the field is the 6m $\times$ 6m "site", which is the resolution at which the field characteristics data (i.e., parameters of the "true" yield response function) were allowed to vary. It was assumed, however, that yields could not be monitored at such a high resolution. Rather, the mechanical harvester was assumed to be 18m wide, and, in cases when the N rate was unchanged, in need of harvesting on a run of no less than 12m to provide accurate yield data. Therefore, the yield data's resolution was 18m $\times$ 12m (3 sites $\times$ 2 sites, called a "subplot"). The N rate unit consisted of six "subplots", that is, 18m $\times$ 72m (3 sites $\times$ 12 sites, called a "plot") to accommodate the variable-rate applicator's application resolution. A 12m "transition zone" was placed between two plots (that is, a 6m "transition zone" on each end of a plot), so that when the experimental N rate changed, the harvester had 12 m to "clear" and begin to record accurately on a plot with an N rate different from its predecessor's.  
+
+The field was 432m (72 sites) wide and 864m (144 sites) long, making its area 37.3 ha. Data from the 6-m-wide headlands, *side-lands (there are no transition zones on the north and south ends of the field)*, and 12-m-wide "transition zones" were not included in the data analyzed. In total there were 1440 subplots available for experimental data analysis. The index $j \in {1, 2, \dots, 1440}$ identifies the field's subplots, and the index $k \in {1, \dots , 6}$ identifies the sites within a subplot. The couplet (j, k) is used to identify individual sites. 
+
+## True Site-specific Yield Response Function
+There has been extensive literature on the choice of functional form for yield response function estimation [@cerrato1990comparison, @frank1990comparison, @bullock1994quadratic, @tembo2008crop]. The most commonly assumed functional forms include the quadratic, linear-plateau, quadratic-plateau, and Mitscherlich‐Baule.
+In this study, each site (j, k)'s "true" yield response function is assumed to follow the quadratic-plateau functional form:
+
+$$
+\begin{equation}
+y_{j,k} = f_{j, k} (N) = f(N, c_{j,k}) = 
+  \begin{cases}
+  \alpha_{j,k} + \beta_{j,k} N + \gamma_{j,k} N^2 + \varepsilon_{j,k} \, ,& N < \tau_{j,k} \\
+  \alpha_{j,k} + \beta_{j,k} \tau_{j,k} + \gamma_{j,k} \tau_{j,k}^2 + \varepsilon_{j,k} \, ,& N \ge \tau_{j,k}
+  \end{cases}
+\end{equation}
+$$
+
+where $c_{j,k} = (\alpha_{j,k},\beta_{j,k},\gamma_{j,k},\tau_{j,k})$  is the vector of yield response function parameters.  $\tau_{j,k}$ can be interpreted as the critical value of N rate at which site $(j, k)$'s yield reaches the plateau level where yield no longer increases with additional N fertilizer.  $\varepsilon_{j, k}$ is a stochastic error term.  The quadratic-plateau functional form implies a diminishing marginal product of N and a yield plateau, which are desirable properties [@frank1990comparison] for a yield response function.  It is a widely observed corn nitrogen response pattern by existing agronomic studies.  Note that the site-specific yield response function $f_{j, k} (N)$ is the reduced form of the meta response function $f$ when the characteristics vector takes on the value $c_{j, k}$.  In other words, all the soil or field properties that could affect yield response to N are embedded in the simulated parameters.
+
+The spatial distributions of site-level parameters $\alpha_{j, k}$, $\beta_{j, k}$, $\gamma_{j,k}$, $\tau_{j, k}$, and the error term $\varepsilon_{j, k}$ were simulated by generating spatially correlated random fields using unconditional Gaussian geostatistical simulation based on the specified variograms [@dietrich1996fast, @wood1994simulation], and the simulation processes were conducted using the R package gstat [@graler16].  Specifically, the model is spherical, the nugget variance is zero, and the range is 600 meters. The nugget value of zero means that infinitesimally close observations have a zero covariance (i.e., they are identical). The range of 600m means that observations separated by more than 600m are not spatially correlated. A higher range value indicates increased spatial dependence, meaning less abrupt differences are observed between the production function parameters of neighboring sites.  The mean and sill variance of each parameter were specified to result in a realistic mean yield of $1.1416 \times 104$ kg/ha, and such that the sites' true economically optimal N rate ranged from $113$ kg/ha to $273$ kg/ha among all the simulations, which most real-world N rate recommendations fall into (e.g., @sawyer2018).  Note that the range of the optimal N rates of individual rounds of simulations are narrower.  In defining the magnitude of the error term, we utilized the experimental data generated through eight on-farm randomized N field trials conducted by the DIFM project in 2018.  Using the data from each of the eight actual trials, separate regressions of yield on N were run, and standard deviations of the residuals were calculated.  The mean value of the eight standard deviations was $1370$ kg ha-1, which was the value of sill variances assigned to the simulations' error terms.
+
+## Trial Design
+The N experiments were implemented using the Latin square design. Six N trial rates were used. A Latin square is a 6 $\times$ 6 matrix (called a "block") of N plots where each N rate occurs exactly once in each row and each column. The field was then comprised of a (4 blocks $\times$ 2 blocks) grid.  Specifically, the distribution pattern of N rates within each Latin square is set to be fixed, so that all Latin squares are identical. The reason to use the identical Latin squares across the field is to ensure there are no adjacent N plots across the square borders assigned the same rate. Furthermore, the order of N rates in each row of a square is designed in a way to avoid relatively large changes in N rates. The trial design can be illustrated in Figure \@ref(fig:field-N-design), and was kept unchanged over the course of the simulations. The choices of the N trial rates, {80, 130, 154, 184, 219, 270} kg ha $^{-1}$, were using the 0%, 20%, 40%, 60%, 80%, and 100% quantiles of the site-level true optimal N rates to ensure approximately equal distribution of trial rates.  The set of N trial rates may differ slightly across simulations due to the randomization of simulated site-level true optimal N rates.
+ 
+## Yield Data Generation
+In each round of simulation, for each site $(j, k)$, the simulation's true yield $y_{j, k}$ was generated based on the site's N rate, true response parameters, and error term. This procedure generated a field-level, site-specific data set, $\{(y_{j, k},N_{j, k} ):j=1,\dots,1440;k=1,\dots, 6 \}$.  But to maintain consistency with real-world trials, it was assumed that harvesting equipment could only record yields accurately at 18m x 12m (subplot) resolution.  Since every site in a plot received the same N application rate, then so did every site within a subplot, so $N^{j,1} = N^{j,2}= \dots = N^{j,6} = N^j$ for each subplot $j$.  Letting $\mu^j$ denote the mean of the yields of the sites in subplot $j$, the analysis of each round's data was based on 1440 $(\mu^j,N^j )$ observations.
+
+## Estimation of Yield Response Function and EONR
+
+Here, three approaches to estimate yield response functions and their associated EONR. First approach uses shape-constrained additive model (SCAM) to estimate a single yield response function and then finds uniform EONR for the field. The other two approaches use GWR, but with different modeling specifications for the impact of nitrogen on yield. The first GWR approach (GWR-R) follows the specification of @rakshit2020 and the second GWR approach (GWR-T) follows that from @trevisan2021spatial. Further details of each approach is presented below. SCAM and GWR estimations were performed using the scam [@scam-R] and GWmodel packages [@gwmodel-R] in R, respectively.   
+
+### Spatially Uniform Management after Non-Spatial Regression Analysis of OFPE Data
+
+In the lower benchmark situation, the researcher is assumed to run OFPEs to gather data, then to estimate a single "full-field" yield response function using a non-parametric regression framework, SCAM, which is a spline-based series estimation that can impose a shape-constraints on the estimated function [@pya2015shape]. The yield response function is assumed to be monotonically increasing and concave with respect to the N application rate, which are traits well substantiated by agronomic research.  When the chosen shape constraints are correct, SCAM will be more statistically efficient than a fully non-parametric regression [@pya2015shape]. The estimated model is represented mathematically as follows, 
+
+$$y_j = \alpha + \sum_{l=1}^l \beta_l g_l(N_j)+ \varepsilon_j$$
+
+where $g_l(\cdot)$ is the $l$th splie basis and $\beta_l$ is its coefficient to estimate. At the time of estimation, $\beta_l$ are constrained in a way that the resulting relationship between $y_j$ and $N_j$ is such that $y_j$ monotonically increases as $N_j$ increases but at the diminishing rate.  
+
+Let $\hat{f}_{scam}(\cdot)$ represent the estimated whole-yield yield response function ($\sum_{k=1}^K \hat{\beta}_k g_k(\cdot)$). Given the information derived from the SCAM approach, the profit maximizer's estimate of the uniform N demand function is,
+
+$$\hat{N}_{scam}^* \equiv argmax_N⁡ \big[\hat{pf}_{scam} (N)-wN\big]$$
+
+### GWR-Rakshit (GWR-R)
+
+In this approach, yield response is modeled as a quadratic function of nitrogen rate by site. For each subplot $j \in {1, 2, \dots, 1440}$, yield response function is specified as follows.
+
+$$y_j= \alpha_j+ \beta_j N_j + \eta_j N_j^2+ \epsilon_j$$
+
+The GWR estimation produces subplot-specific estimates of coefficients $\hat{\alpha}_j$, $\hat{\beta}_j$, and $\hat{\eta}_j$, and so of the yield response function $\hat{f}_{gwr-r,j}(N)$ for $j = 1, 2, \dots, 1440$. The estimated economically optimal N application rate for subplot $j$ is obtained by solving profit maximization problem by subplot and then,
+
+$$\hat{N}_{gwr-r,j}^{*} \equiv argmax_N⁡[\hat{pf}_{gwr-r, j} (N) -wN]$$.
+
+### GWR-Trevisan (GWR-T)
+
+In this approach, unlike GWR-Rakshit, the coefficient on $N^2$ is estimated as a global parameter while the coefficient on $N$ is estimated site-specifically. For each subplot $j \in {1, 2, \dots, 1440}$,
+
+$$y_j= \alpha_j+ \beta N_j + \eta N_j^2+ \epsilon_j$$.
+
+where $\eta$ is shared by all the subplots. This is a so called Mixed GWR model where the coefficients on some variables are estimated as global parameters.
+
+Let $\hat{f}_{gwr-t,j}(N)$ for $j = 1, 2, \dots, 1440$ denote the estimated yield response function for subplot $j$. The estimated economically optimal N application rate for subplot $j$ was then,
+
+$$\hat{N}_{gwr-t,j*} \equiv argmax_N⁡[\hat{pf}_{gwr-t,j} (N) -wN]$$.
+
+## The value of GWR-based VRA over scam-based URA
+
+In order to test hypothesis 1, we calculate the true profit of SCAM-based URA and GWR-based VRA by plugging in the estimated optimal nitrogen rates into the "true" yield response functions.
+
+The true per-ha partial profits from the SCAM approach is
+
+$$\Pi_{scam}^* = 1/8640 \sum_{j=1}^{1440} \sum_{k=1}^6 \big[pf_{j, k} (\hat{N}_{scam}^* )-w\hat{N}_{scam}^*\big]$$
+
+where $f_{j, k}(\cdot)$  denotes the true yield response function at site $(j, k)$.
+
+Let $m$ in $GWR-m$ denote the GWR approach: $m = r$ for GWR-R and $m = t$ for GWR-T. The true per-ha partial profits that result from applying the profit-maximizing site-specific N rate plan estimated by GWR-m are,
+
+$$\Pi_{gwr-m}=1/8640 \sum_{j=1}^{1440} \sum_{k=1}^6 [pf_{j, k} (\hat{N}_{gwr-m, j}^*)-w\hat{N}_{gwr-m,j}^*]$$,   (15)
+
+where $f_{j, k} (\hat{N}_{gwr-j}^*)$ denote the true yield generated at site $(j, k)$ with subplot $l$'s N rate.
+
+Then the true value of GWR-based VRA over SCAM-based URA is the difference of their partial profits:
+
+$\Delta{gwr-m} = \Pi_{gwr-m} - \Pi_{scam}$
+
+Now, in order to find the bias in estimating the value of VRA, we calculate the "estimated" profit of SCAM-based URA and GWR-based VRA by plugging in the estimated optimal nitrogen rates into the site-specific yield response functions estimated by GWR. It is worth re-emphasizing that using the "estimated" yield response function for profit evaluation is unavoidable for any researchers who try to estimate the value of VRA or statistical methods as we never know the true yield response function. It is the only option for us to treat the estimated yield response functions as the true yield response functions and calculate the profit based on them. Nobody can get away of this problem. Estimated per-ha profits for SCAM-based URA and GWR-based VRA are found as follows:
+
+$$\hat{\Pi}_{scam}^* = 1/8640 \sum_{j=1}^{1440} \sum_{k=1}^6 \big[\hat{pf}^{gwr}_{j, k} (\hat{N}_{scam}^* )-w\hat{N}_{scam}^*\big]$$
+
+$$\hat{\Pi}_{gwr-m}^*=1/8640 \sum_{j=1}^{1440} \sum_{k=1}^6 [\hat{pf}^{gwr-m}_{j, k} (\hat{N}_{gwr-m}^{j*} )-w\hat{N}_{gwr-m}^{j*}]$$,   (15)
+
+Then the estimated value of GWR-based VRA over SCAM-based URA is
+
+$$\hat{\Delta}_{gwr-m} = \hat{\Pi}_{gwr-m}^* - \hat{\Pi}_{scam}^*$$
+
+Finally, the bias in the estimation of the value of GWR-based VRA is calculated as follows:
+
+$$bias = \hat{\Delta}_{gwr-m} - \Delta_{gwr-m}$$
+
+# Results and Dicusscions
+
+## The value of GWR-based VRA over SCAM-based URA
+
+Figure \@ref(fig:pi-dif-dist) shows the distribution of the difference in profit between the GWR-based VRA and SCAM-based URA. The distribution of the value of VRA from GWR-R is centered around 0, indicating that VRA based on GWR-R is not any more profitable than SCAM-based URA on average. This result comes from the fact that GWR-R is highly inaccurate in estimating the coefficient on $N$ and $N^2$ by site, which led to unreliable site-specific nitrogen rate recommendations. Figure \@ref(fig:true-vs-estimated-coef-gwr-r) shows the estimation accuracy of GWR-R for the coefficients on $N$ and $N^2$ for one simulation round as an illustration. A particularly worrying problem is the fact that coefficient estimates on $N^2$ for some subplots are positive, which means that yield is a convex function of nitrogen rate where nitrogen rates displays "increasing" marginal return on yield, which contradicts the well-known agronomic findings that the impact of nitrogen on yield diminishes at a higher nitrogen rate. However, this is consistent with the bottom panel of Figure 12 in @rakshit2020. Figure \@ref(fig:true-vs-estimated-optn-gwr-r) plots the estimated site-specific optimal N against the true optimal N for the same simulation round. As can be seen in these figures, GWR-R can be highly unreliable, and consequently, VRA based on GWR-R is not even better than a simple URA approach. Basically, not enough information is available locally to estimate reliably the coefficients on both $N$ and $N^2$ by subplot.
+
+The GWR-T approach, however, performs better than SCAM-URA in majority of cases, with some cases showing values exceeding \$10 per ha. This may seem surprising as the model estimated in the GWR-T approach is more restrictive than that in the GWR-R approach because the coefficient on $N^2$ is assumed to be global. However, this restriction helps avoid having negative coefficients on $N^2$ for some subplots unlike GWR-R. In conclusion, the value of avoiding highly unreliable estimates of coefficients on $N^2$ site-specifically is greater than loss of local flexibility in the coefficients on $N^2$.
+
+It is clear from these results that GWR-T performs better than GWR-R, and GWR-T should be used if researchers is using a GWR-based approach to find site-specific input recommendation. This findings, however, have important implications beyond just GWR-R and GWR-T. An obvious extension of the parametric GWR approaches would be a semi-parametric or non-parametric GWR where the yield response functions are estimated without assuming particular functional forms (like SCAM). However, such method is likely to encounter a very similar problem that GWR-R faced: not enough information available locally to estimate reliably the shape of yield response curve locally.
+
+## Bias in the estimation of the value of GWR-based VRA 
+
+Now, instead of obtaining the true value of GWR-based VRA, we look at the bias in the "estimated" value of GWR-based VRA as researchers would find when real data is used. Figure \@ref(fig:bias-est-pi) shows the distribution of the bias in "estimated" profit between the GWR-based VRA and SCAM-based URA. Unlike the true difference in profit, VRA based on GWR-R appears to perform overwhelmingly better, with its average profit about \$`r ` per ha more than SCAM-based URA. That is, researchers would tend to significantly over-estimate the value of VRA based on GWR-R. As noted earlier, GWR-R is highly inaccurate. When the GWR estimates are considered the true response in such a case, then the inaccuracy (error) means the over-statement of the actual heterogeneity in yield response function within a field. Consequently, GWR-R looks like much more valuable than it truly is. The degree of overestimation is so high that it is highly misleading. Unlike GWR-R, bias is more than $10 per ha for `r results[type == "GWR-T", mean(abs(bias) > 10)] * 100` % of the simulation cases for GWR-T as opposed to `r results[type == "GWR-R", mean(abs(bias) > 10)] * 100` % for GWR-R. However, as can be seen in the bottom panel of Figure \@ref(fig:bias-est-pi), the distribution of bias from GWR-T has a fatter tail than GWR-R with more mass on higher bias values. Bias is more than $50 per ha for `r results[type == "GWR-T", mean(abs(bias) > 50)] * 100` % of the simulation cases for GWR-T as opposed to `r results[type == "GWR-R", mean(abs(bias) > 50)] * 100` % for GWR-R. 
+
+Figure \@ref(fig:why-bias-many) illustrates how over-estimations can occur. It shows yield response functions estimated by GWR-T and estimated yields associated with the GWR-bsaed EONR rates and SCAM-based EONR rate for randomly chosen 50 sites in a single simulation. Since GWR-based EONR were obtained assuming the yield response functions estimated by GWR, they will always perform better than the SCAM-based EONR for every single site by construction. In this case, the SCAM-based EONR is high enough that estimated yields can be significantly lower for many of the sites because of the quadratic functional form assumption. Figure \@ref(fig:why-bias-single) focuses on a single site and compare estimated and true yields between GWR and SCAM (panel (a)) and estimated and true profits between GWR and SCAM (panel (b)). The true yield response functions on this site hits the plateua at about nitrogen rate of $140$ kg/ha. However, GWR-estimates yield response function suggests yield hits its peak at about nitrogen rate of $190$ kg/ha and then yield declines afterward. In reality, the yield differential between GWR and SCAM is 0, while the estimated yield differential is about $0.25$ ton/ha. This translates to the over-estimation of the value of GWR in panel (b). Based on the true profit response curve, GWR-based recommendation is about \$`r round(- true_yield_data[type != "True", diff(profit)], digits = 0)` /ha more profitable than SCAM-based recommendation. This profit differential comes soley from the difference in cost for nitrogen application because yields are the same for both GWR and SCAM. However, based on the estimated GWR-based response function for this site, GWR-based recommendation is about \$`r round(- point_data_gwr[, diff(profit)], digits = 0)` /ha more profitable than SCAM-based recommendation. Beyond the difference in nitrogen cost, the falsely estimated yield boost by GWR contribute to the profit differential, thus significantly over-estimating the actual value of GWR. 
+
+In summary, researchers need to be extremely cautious about their estimated value of VRA based on GWR whether they follow GWR-R or GWR-T. They almost always over-estimate their true values and the bias can be misleadingly high at the non-negligible probability. Extremely high values of VRA reported in @trevisan2021spatial are likely to have suffered from this bias, and it is likely that the true values are much lower even though we will never know their true values.
+
+# Conclusion
+
+This articles examined the value of GWR-based VRA and the bias in its estimation in the context of OFPE. We showed that restricting the coefficient on $N^2$ to a global parameter as done in @trevisan2021spatial leads to site-specific nitrogen rate recommendations with higher profits compared to the speficication used by @rakshit2020, which allows the coefficients on $N^2$ to vary locally. However, we found that both specifications can result in significant over-estimation of the true value of GWR-based site-specific nitrogen rate recommendations. The bias is so large that it can be highly misleading and researchers need to be cautious about promoting GWR-based approach. 
+
+A fruitful extension of GWR-based approach would be more flexible model specifications of yield resopnse functions. As we saw, the main culprit of the significant over-estimation of the value of GWR-based VRA is the quadratic functional form. For example, GWR with quadratic-plateau and linear-plateau specifications may be able to substantially alleviate the bias problem.    
+
+`r run_pagebreak()`
+
+# Figures
+
+```{r fig.id = "field-layout", fig.cap = "Simulated field layout with spatial unit definitions", fig.dim = c(6, 6)}
+g_layout 
+```
+
+```{r fig.id = "field-N-design", fig.cap = "Experiment design of nitrogen (N) rates"}
+g_exp
+```
+
+```{r, fig.id = "pi-dif-dist", fig.cap = "The value of GWR-based VRA over SCAM-based URA for GWR-R and GWR-T"}
+g_value
+```
+
+```{r fig.id = "true-vs-estimated-coef-gwr-r", fig.cap = "Comparison of Estimated and True Coefficients"}
+g_comp_coef
+```
+
+```{r fig.id = "true-vs-estimated-optn-gwr-r", fig.cap = "Comparison of Estimated and True EONR"}
+g_comp_eonr
+```
+
+```{r fig.id = "bias-est-pi", fig.cap = "Bias in the estimation of the value of GWR-based VRA over SCAM-based URA for GWR-R and GWR-T"}
+g_bias
+```
+
+```{r fig.id = "why-bias-many", fig.cap = "The cause of significant over-estimation of the value of GWR-based VRA"}
+g_why_bias_many
+```
+
+```{r fig.id = "why-bias-single", fig.cap = "An illustration of over-estimation of the value of GWR-based VRA over SCAM-based URA",fig.dim = c(6, 7)}
+g_why_bias_single
+```
+
+`r run_pagebreak()`
+
+# References
+
+<div id="refs"></div>
