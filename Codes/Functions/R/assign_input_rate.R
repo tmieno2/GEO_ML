@@ -18,7 +18,7 @@ assign_input_rate <- function(N_levels, block_num, design) {
     N_design <- data.table(
       block_id = rep(1:block_num, each = 36),
       plot_in_block_id = rep(1:36, block_num),
-      N = N_levels[rep(c(t(M.latin)), times = block_num)]
+      N_tgt = N_levels[rep(c(t(M.latin)), times = block_num)]
     )
   } else if (design == "Latin Square Random") {
 
@@ -27,7 +27,7 @@ assign_input_rate <- function(N_levels, block_num, design) {
       block_id = rep(1:block_num, each = 36),
       plot_in_block_id = rep(1:36, block_num),
       # === randomly select block_num latin squares ===#
-      N = c(rlatin(n = block_num, size = 6)) %>% N_levels[.]
+      N_tgt = c(rlatin(n = block_num, size = 6)) %>% N_levels[.]
     )
   } else if (design == "Latin Square Cascade") {
 
@@ -45,7 +45,7 @@ assign_input_rate <- function(N_levels, block_num, design) {
     N_design <- data.table(
       block_id = rep(1:block_num, each = 36),
       plot_in_block_id = rep(1:36, block_num),
-      N = N_levels[rep(c(t(M.latin)), times = block_num)]
+      N_tgt = N_levels[rep(c(t(M.latin)), times = block_num)]
     )
   } else if (design == "Alternate Block") {
 
@@ -63,7 +63,7 @@ assign_input_rate <- function(N_levels, block_num, design) {
     N_design <- data.table(
       block_id = rep(1:block_num, each = 18),
       plot_in_block_id = rep(1:18, block_num),
-      N = N_levels[rep(c(t(M.nojump)), times = block_num)]
+      N_tgt = N_levels[rep(c(t(M.nojump)), times = block_num)]
     )
   } else if (design == "Checkerboard") {
 
@@ -76,7 +76,7 @@ assign_input_rate <- function(N_levels, block_num, design) {
     N_design <- data.table(
       block_id = rep(1:block_num, each = 6),
       plot_in_block_id = rep(1:6, block_num),
-      N = N_levels[rep(c(t(M.nojump)), times = block_num)]
+      N_tgt = N_levels[rep(c(t(M.nojump)), times = block_num)]
     )
   } else if (design == "Randomized Block") {
 
@@ -84,7 +84,7 @@ assign_input_rate <- function(N_levels, block_num, design) {
     N_design <- data.table(
       block_id = rep(1:block_num, each = 6),
       plot_in_block_id = rep(1:6, block_num),
-      N = replicate(block_num, sample(N_levels, replace = FALSE)) %>% as.vector()
+      N_tgt = replicate(block_num, sample(N_levels, replace = FALSE)) %>% as.vector()
     )
   } else if (design == "Completely Random") {
 
@@ -92,7 +92,7 @@ assign_input_rate <- function(N_levels, block_num, design) {
     N_design <- data.table(
       block_id = rep(1:block_num, each = 6),
       plot_in_block_id = rep(1:6, block_num),
-      N = sample(N_levels, size = 6 * block_num, replace = TRUE)
+      N_tgt = sample(N_levels, size = 6 * block_num, replace = TRUE)
     )
   } else if (design == "Fixed Strip Grad") {
 
@@ -100,7 +100,7 @@ assign_input_rate <- function(N_levels, block_num, design) {
     N_design <- data.table(
       block_id = rep(1:block_num, each = 12),
       plot_in_block_id = rep(1:12, block_num),
-      N = N_levels[rep(c(1:6, 6:1), times = block_num)]
+      N_tgt = N_levels[rep(c(1:6, 6:1), times = block_num)]
     )
   } else if (design == "Fixed Strip Fluc 1") {
 
@@ -108,7 +108,7 @@ assign_input_rate <- function(N_levels, block_num, design) {
     N_design <- data.table(
       block_id = rep(1:block_num, each = 6),
       plot_in_block_id = rep(1:6, block_num),
-      N = N_levels[rep(c(1, 6, 3, 5, 2, 4), times = block_num)]
+      N_tgt = N_levels[rep(c(1, 6, 3, 5, 2, 4), times = block_num)]
     )
   } else if (design == "Random Strip") {
 
@@ -116,7 +116,7 @@ assign_input_rate <- function(N_levels, block_num, design) {
     N_design <- data.table(
       block_id = rep(1:block_num, each = 6),
       plot_in_block_id = rep(1:6, block_num),
-      N = replicate(block_num, sample(N_levels, replace = FALSE)) %>% as.vector()
+      N_tgt = replicate(block_num, sample(N_levels, replace = FALSE)) %>% as.vector()
     )
   } else if (design == "Cascade Plot") {
 
@@ -138,7 +138,7 @@ assign_input_rate <- function(N_levels, block_num, design) {
     N_design <- data.table(
       block_id = rep(1:block_num, each = 144),
       plot_in_block_id = rep(1:144, block_num),
-      N = N_levels[rep(c(t(M.cascade)), times = block_num)]
+      N_tgt = N_levels[rep(c(t(M.cascade)), times = block_num)]
     )
   } else if (design == "Wave") {
 
@@ -158,7 +158,7 @@ assign_input_rate <- function(N_levels, block_num, design) {
     N_design <- data.table(
       block_id = rep(1:block_num, each = 100),
       plot_in_block_id = rep(1:100, block_num),
-      N = N_levels[rep(c(t(M.wave)), times = block_num)]
+      N_tgt = N_levels[rep(c(t(M.wave)), times = block_num)]
     )
   } else if (design == "Fixed Strip Fluc 2") {
 
@@ -166,7 +166,7 @@ assign_input_rate <- function(N_levels, block_num, design) {
     N_design <- data.table(
       block_id = rep(1:block_num, each = 6),
       plot_in_block_id = rep(1:6, block_num),
-      N = N_levels[rep(c(1, 5, 2, 6, 3, 4), times = block_num)]
+      N_tgt = N_levels[rep(c(1, 5, 2, 6, 3, 4), times = block_num)]
     )
   } else {
     N_design <- NA

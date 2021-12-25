@@ -1,5 +1,4 @@
 gen_reg_data <- function(i, field_with_design, field_parameters) {
-
   print(i)
 
   experiment_data <-
@@ -30,8 +29,8 @@ gen_reg_data <- function(i, field_with_design, field_parameters) {
         quantile(Nk, prob = 0.8),
         max(Nk) + 20
       ) %>%
-      pmax(0, .) %>%
-      round()
+        pmax(0, .) %>%
+        round()
     )), by = sim]
 
   # /*+++++++++++++++++++++++++++++++++++
@@ -55,8 +54,7 @@ gen_reg_data <- function(i, field_with_design, field_parameters) {
           block_num = block_num,
           design = experiment_data$design_name
         ) %>%
-        .[, sim := x]
-
+          .[, sim := x]
       }
     ) %>%
     rbindlist()
@@ -64,37 +62,33 @@ gen_reg_data <- function(i, field_with_design, field_parameters) {
   reg_data <-
     field[cell_data, on = "cell_id"] %>%
     n_assign_data[., on = c("sim", "block_id", "plot_in_block_id")] %>%
-    #* used for calculating spatial measures
-    .[, Nid := as.numeric(as.factor(N))] %>%
-    #* target N rate for mapping (before application error is added)
-    #===add cell-level N application noise===#
-    .[, N := N * (1 + N_error * 0.1)] %>%
+    #* add cell-level N application noise to target N
+    .[, N := N_tgt * (1 + N_error * 0.1)] %>%
     .[N < 0, N := 0] %>%
     .[, N2 := N^2] %>%
     #* deterministic yield
     .[, det_yield := gen_yield_QP(b0, b1, b2, Nk, N)] %>%
-    #* create yield errors 
+    #* create yield errors
     .[, mean_det_yield := mean(det_yield), by = sim] %>%
     .[, yield_error := mean_det_yield * m_error] %>%
-    .[, yield := det_yield + yield_error]  %>%
-    #* remove observations in the buffer zone 
+    .[, yield := det_yield + yield_error] %>%
+    #* remove observations in the buffer zone
     .[buffer == 0, ] %>%
     #* aggregate the data by analysis unit
     .[,
       lapply(.SD, mean),
       by = .(sim, aunit_id),
-      .SDcols = c("yield", "yield_error", "Nid", "N", "N2", "b0", "b1", "b2", "Nk", "X", "Y")
+      .SDcols = c("yield", "yield_error", "N_tgt", "N", "N2", "b0", "b1", "b2", "Nk", "X", "Y")
     ] %>%
     nest_by_dt(by = "sim") %>%
-    N_levels_data[., on = "sim"] 
+    N_levels_data[., on = "sim"]
 
   final_data <-
     experiment_data %>%
     mutate(reg_data = list(reg_data)) %>%
-    dplyr::select(- field_pars, - field_sf)
+    dplyr::select(-field_pars, -field_sf)
 
   print(paste0("Saving the data to ", final_data$data_file_name))
 
   saveRDS(final_data, final_data$data_file_name)
-
 }

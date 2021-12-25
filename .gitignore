@@ -1,2 +1,16 @@
 Data/*
+Notes/*
+Literature/*
 Results/*
+*.docx
+.Rproj.user/*
+Writing/cache/*
+Writing/figure/*
+Writing/*.pdf
+Writing/*.rds
+Writing/*.docx
+Writing/manuscript_*/*
+Writing/office_down_*/*
+Writing/office_down_*
+Writing/*.pptx
+.Rproj.user

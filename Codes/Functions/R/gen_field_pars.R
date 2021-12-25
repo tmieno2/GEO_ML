@@ -2,7 +2,6 @@
 #* Plateau, Nk, b0, b1, b2, yeld error, application error
 
 gen_field_pars <- function(sp_range, gstat_model, field_sf, nsim) {
-
   xy <- data.table(field_sf)[, .(X, Y, cell_id)]
 
   # === Nk ===#
@@ -82,7 +81,7 @@ gen_field_pars <- function(sp_range, gstat_model, field_sf, nsim) {
     .[, N_error := -1 + p * 2] %>%
     .[, c("cell_id", "sim", "N_error")]
 
-  m_error_data <- 
+  m_error_data <-
     gen_pars(
       mean = 0,
       psill = 0.015,
@@ -96,7 +95,7 @@ gen_field_pars <- function(sp_range, gstat_model, field_sf, nsim) {
     .[, min_b := min(m_error), by = sim] %>%
     .[, max_b := max(m_error), by = sim] %>%
     .[, p := punif(m_error, min_b, max_b)] %>%
-    .[, m_error := -0.3 + p * 0.6] %>%
+    .[, m_error := -0.2 + p * 0.4] %>%
     .[, c("cell_id", "sim", "m_error")]
 
   # === b1, b2 ===#
@@ -112,6 +111,4 @@ gen_field_pars <- function(sp_range, gstat_model, field_sf, nsim) {
     .[N_error_data, on = c("sim", "cell_id")]
 
   return(cell_data)
-
 }
-
