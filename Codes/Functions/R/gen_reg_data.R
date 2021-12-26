@@ -22,12 +22,14 @@ gen_reg_data <- function(i, field_with_design, field_parameters) {
     .[Nk > 300, Nk := 300] %>%
     .[, .(N_levels = list(
       c(
-        min(Nk) - 20,
+        # min(Nk) - 20,
+        min(Nk),
         quantile(Nk, prob = 0.2),
         quantile(Nk, prob = 0.4),
         quantile(Nk, prob = 0.6),
         quantile(Nk, prob = 0.8),
-        max(Nk) + 20
+        max(Nk)
+        # max(Nk) + 20
       ) %>%
         pmax(0, .) %>%
         round()

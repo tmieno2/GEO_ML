@@ -30,7 +30,7 @@ def run_DR_OF(
     X_test,
     n_trees=1000,
     min_leaf_size=10,
-    max_depth=30,
+    max_depth=10,
     subsample_ratio=0.7,
     lambda_reg=0.33,
     se=True,
@@ -45,7 +45,9 @@ def run_DR_OF(
             C=1 / (X.shape[0] * lambda_reg), penalty="l1", solver="saga"
         ),
         # model_Y=Lasso(alpha=lambda_reg),
-        model_Y=GradientBoostingRegressor(),
+        model_Y=GradientBoostingRegressor(
+            n_estimators=100, min_samples_leaf=10, max_depth=10
+        ),
         # propensity_model_final=LogisticRegression(
         #     C=1 / (X.shape[0] * lambda_reg), penalty="l1", solver="saga"
         # ),

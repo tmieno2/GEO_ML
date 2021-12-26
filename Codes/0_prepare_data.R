@@ -50,9 +50,9 @@ field_data <-
     field_col = c(144), # the number of cell columns
     #* how tall the field is
     field_row = 72, # the number of row columns
-    sp_range = c(1200),
+    sp_range = c(800),
     # gstat_model = "Exp",
-    gstat_model = "Exp",
+    gstat_model = "Sph",
     #* prices
     pCorn = 0.197, # $/kg
     pN = 0.882 # $/kg
