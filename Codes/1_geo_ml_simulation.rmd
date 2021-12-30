@@ -168,6 +168,11 @@ run_analysis <- function(sim_i, pN, pCorn) {
     .[, .(aunit_id, opt_N_scam)]
 
   # /*+++++++++++++++++++++++++++++++++++
+  #' ## Continuous treatment DML-OF
+  # /*+++++++++++++++++++++++++++++++++++
+
+
+  # /*+++++++++++++++++++++++++++++++++++
   #' ## DROF
   # /*+++++++++++++++++++++++++++++++++++
   N_tgt_rank_data <-
@@ -197,8 +202,10 @@ run_analysis <- function(sim_i, pN, pCorn) {
   Y <- reg_data[, yield] %>% as.array() #* dependent var
   T <- reg_data[, N_tgt_rank] %>% as.array() #* treatment
   # X <- xy_mat #* het impact driver
-  X <- reg_data[, .(x, y, x * y, x^2, y^2, x^3, y^3)] %>% as.matrix() #* het impact driver
-  W <- xy_mat #* controls
+  X <- reg_data[, .(x, y, x * y, x^2, y^2, x^2 * y^2, x^3, y^3)] %>% as.matrix() #* het impact driver
+  # X <- reg_data[, .(b0, b1, b2, Nk)]
+  # W <- xy_mat #* controls
+  W <- X #* controls
 
   #* Define some hyper parameters
   subsample_ratio <- 0.3
@@ -254,8 +261,7 @@ run_analysis <- function(sim_i, pN, pCorn) {
     mutate(gam_res = list(
       gam(
         tau ~
-        s(X, k = 4) +
-          s(Y, k = 4) + ti(X, Y, k = c(4, 4)),
+        s(X, k = 6) + s(Y, k = 6) + ti(X, Y, k = c(6, 6)),
         data = data
       )
     )) %>%
@@ -301,7 +307,7 @@ run_analysis <- function(sim_i, pN, pCorn) {
 ## Run simulation
 
 ```{r }
-sim_i <- 3
+sim_i <- 10
 eonr_results <- run_analysis(sim_i = sim_i, pN, pCorn)
 
 field_tau <-
@@ -332,5 +338,6 @@ dplyr::select(field_tau, opt_N, opt_N_drof, opt_N_drof_smth, opt_N_gwr, opt_N_sc
   geom_sf(aes(fill = value), color = NA) +
   facet_grid(variable ~ .) +
   scale_fill_viridis_c()
+
 ```
 

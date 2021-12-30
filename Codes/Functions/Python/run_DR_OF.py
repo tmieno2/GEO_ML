@@ -30,7 +30,7 @@ def run_DR_OF(
     X_test,
     n_trees=1000,
     min_leaf_size=10,
-    max_depth=10,
+    max_depth=30,
     subsample_ratio=0.7,
     lambda_reg=0.33,
     se=True,
@@ -41,18 +41,20 @@ def run_DR_OF(
         min_leaf_size=min_leaf_size,
         max_depth=max_depth,
         subsample_ratio=subsample_ratio,
-        propensity_model=LogisticRegression(
-            C=1 / (X.shape[0] * lambda_reg), penalty="l1", solver="saga"
-        ),
+        # propensity_model=LogisticRegression(
+        #     C=1 / (X.shape[0] * lambda_reg), penalty="l1", solver="saga"
+        # ),
         # model_Y=Lasso(alpha=lambda_reg),
         model_Y=GradientBoostingRegressor(
-            n_estimators=100, min_samples_leaf=10, max_depth=10
+            n_estimators=100, min_samples_leaf=10, max_depth=30
         ),
         # propensity_model_final=LogisticRegression(
         #     C=1 / (X.shape[0] * lambda_reg), penalty="l1", solver="saga"
         # ),
-        # model_Y_final=WeightedLasso(alpha=lambda_reg),
-        # model_Y_final=GradientBoostingRegressor(),
+        # model_Y_final=WeightedLasso(alpha=lambda_reg, max_iter=4000),
+        # model_Y_final=GradientBoostingRegressor(
+        #     n_estimators=100, min_samples_leaf=10, max_depth=30
+        # )
     )
 
     est.fit(Y, T, X=X, W=W)
