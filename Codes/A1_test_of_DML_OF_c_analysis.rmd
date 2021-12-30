@@ -1,0 +1,217 @@
+# Set up
+
+## Packages
+```{r include = FALSE}
+# /*===========================================================
+#' # Preparation
+# /*===========================================================
+#* set up python environment
+library(reticulate)
+
+#* packages
+library(sp)
+library(spdep)
+library(spatialreg)
+library(sf)
+library(raster)
+library(data.table)
+library(tidyverse)
+library(dplyr)
+library(magrittr)
+library(gstat)
+library(GWmodel)
+library(scam)
+library(mgcv)
+library(magic)
+library(stringr)
+library(ggplot2)
+library(tictoc)
+library(here)
+```
+
+## Other preparations 
+```{r }
+#* set working directory
+knitr::opts_knit$set(root.dir = getwd())
+
+#* source all the R functions in the Functions/R folder
+fs::dir_ls(here("Codes", "Functions", "R"), full.names = TRUE) %>%
+  purrr::map(~ source(.))
+
+source_python(here("Codes", "Functions", "Python", "run_DML_OF_c.py"))
+```
+
+# Data Generation
+
+```{r }
+N <- 1000
+
+data <-
+  data.table(
+    id = 1:N,
+    #* controls (affect Y directly, but not through the treatment)
+    w1 = rnorm(N),
+    w2 = rnorm(N),
+    #* driver (affect Y through treatment) of treatment effect heterogeneity
+    x1 = rnorm(N),
+    x2 = rnorm(N),
+    #* treatment
+    t = rnorm(N),
+    #* error
+    e = rnorm(N)
+  ) %>%
+  .[, `:=`(
+    tau_1 = (x1 + x2),
+    tau_2 = (x1 - x2)
+  )] %>%
+  .[, te := t * tau_1 + t^2 * tau_2] %>%
+  .[, y := w1 + w1^2 + w2 + w2^3 + te]
+
+
+# /*+++++++++++++++++++++++++++++++++++
+#' ## Create DML-OF inputs
+# /*+++++++++++++++++++++++++++++++++++
+Y <- data[, y] %>% as.array() #* dependent var
+X <- data[, .(x1, x2)] %>% as.matrix() #* het impact driver
+W <- data[, .(w1, w2)] %>% as.matrix()
+T <- data[, .(t, t^2)] %>% as.matrix()
+X_test <-
+  CJ(
+    x1 = quantile(data$x1, prob = seq(0, 1, length = 5)),
+    x2 = quantile(data$x2, prob = seq(0, 1, length = 5))
+  ) %>%
+  .[, id := 1:nrow(.)]
+
+#* Define some hyper parameters
+subsample_ratio <- 0.3
+lambda_reg <- sqrt(log(ncol(W)) / (10 * subsample_ratio * nrow(Y)))
+```
+
+## Quadratic
+```{r eval = F}
+
+#* estimate Doubly-Robus Orthogonal Forest
+results_q <-
+  run_DML_OF_c(
+    Y = Y,
+    T = T,
+    X = X,
+    W = W,
+    X_test = as.matrix(X_test[, .(x1, x2)]),
+    subsample_ratio = subsample_ratio
+  )
+
+tau <-
+  results_q %>%
+  data.table() %>%
+  setnames(c("V1", "V2"), c("tau_1_hat", "tau_2_hat"))
+
+plot_data <-
+  X_test[, `:=`(
+    tau_1 = x1 + x2,
+    tau_2 = x1 - x2
+  )] %>%
+  cbind(tau)
+
+ggplot(data = plot_data) +
+  geom_point(aes(y = tau_1, x = tau_1_hat)) +
+  geom_abline(slope = 1, col = "red")
+
+ggplot(data = plot_data) +
+  geom_point(aes(y = tau_2, x = tau_2_hat)) +
+  geom_abline(slope = 1, col = "red")
+```
+
+## Semi-parametric
+
+**Model specification**:
+
+$$
+y = \sum_{k=1}^3 \phi_k(t)\cdot \theta_k(x_1, x_2) + g(w_1, w_2) + \varepsilon
+$$
+
++ $t$: continuous treatment variable
++ $x_1$, $x_2$: variables that drive treamtne effect heterogeneity
++ $w_1$, $w_2$: variables that affect $y$ directly
+
+### Construct T-matrix
+```{r semi-DML-OF}
+#* Construct T matrix
+gam_setup <- gam(y ~ s(t, k = 4), data = data)
+
+T_seq <-
+  predict(gam_setup, data = data, type = "lpmatrix") %>%
+  #* get rid of the intercept
+  .[, -1]
+```
+
+### Estimation with DML-OF
+
+```{r run-DML-OF}
+#* estimate Doubly-Robus Orthogonal Forest
+#* \theta_k(x_1, x_2)
+results_se <-
+  run_DML_OF_c(
+    Y = Y,
+    T = T_seq,
+    X = X,
+    W = W,
+    X_test = as.matrix(X_test[, .(x1, x2)]),
+    subsample_ratio = subsample_ratio
+  )
+```
+
+### Evaluate the accuracy of the estimation
+
+```{r evaluate}
+#* value of t to be evaluated at
+t_data <-
+  data.table(
+    t = quantile(data$t, prob = seq(0.05, 0.95, length = 20))
+  )
+
+#* phi_k(t)
+eval_data <-
+  t_data %>%
+  predict(gam_setup, newdata = ., type = "lpmatrix") %>%
+  #* get rid of the intercept
+  .[, -1]
+
+#* \sum_{k=1}^3 \phi_k(t)\cdot \theta_k(x_1, x_2) at various values of t
+te_est <-
+  lapply(
+    1:ncol(eval_data),
+    function(x) {
+      (eval_data[, x] %>% as.matrix()) %*% t(results_se[, x] %>% as.matrix())
+    }
+  ) %>%
+  reduce(`+`) %>%
+  data.table() %>%
+  setnames(names(.), as.character(X_test$id)) %>%
+  .[, t := t_data$t] %>%
+  melt(id.var = "t") %>%
+  setnames("variable", "id") %>%
+  .[, id := as.numeric(id)]
+
+#* data for plotting
+data_ex <-
+  copy(X_test) %>%
+  expand_grid_df(., t_data) %>%
+  .[, te_true := t * (x1 + x2) + t^2 * (x1 - x2)] %>%
+  .[, .(id, t, te_true)] %>%
+  te_est[., on = c("id", "t")]
+
+#* compare the estimated and true response curves by id
+plot_comp <-
+  data_ex %>%
+  melt(id.var = c("id", "t")) %>%
+  .[, type := fifelse(variable == "value", "estimated", "true")] %>%
+  nest_by_dt("id") %>%
+  rowwise() %>%
+  mutate(g_comp = list(
+    ggplot(data = data) +
+      geom_line(aes(y = value, x = t, color = type))
+  ))
+
+plot_comp$g_comp
+```
