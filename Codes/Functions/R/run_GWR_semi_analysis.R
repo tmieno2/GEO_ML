@@ -33,8 +33,9 @@ run_GWR_semi_analysis <- function(gam_formula, reg_data, N_levels, pN, pCorn) {
       gwr_formula,
       data = reg_data_sp,
       approach = "AICc",
-      kernel = "gaussian",
-      adaptive = T
+      kernel = "gaussian"
+      # ,
+      # adaptive = T
     )
 
   gwr_est <-
@@ -43,8 +44,9 @@ run_GWR_semi_analysis <- function(gam_formula, reg_data, N_levels, pN, pCorn) {
       data = reg_data_sp,
       # bw = obw,
       bw = 60,
-      kernel = "gaussian",
-      adaptive = T
+      kernel = "gaussian"
+      # ,
+      # adaptive = T
     )
 
   gwr_beta <-

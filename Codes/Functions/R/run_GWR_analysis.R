@@ -23,8 +23,7 @@ run_GWR_analysis <- function(reg_data, N_levels, pN, pCorn) {
     formula(yield_rest ~ N),
     data = reg_data_sp,
     approach = "AICc",
-    kernel = "gaussian",
-    adaptive = T
+    kernel = "gaussian"
   )
 
   # === loop over transfer coefficients ===#
@@ -61,8 +60,7 @@ run_GWR_analysis <- function(reg_data, N_levels, pN, pCorn) {
         data = data_sp,
         bw = 60,
         # bw = obw,
-        kernel = "gaussian",
-        adaptive = T
+        kernel = "gaussian"
       )
     )) %>%
     mutate(data = list(

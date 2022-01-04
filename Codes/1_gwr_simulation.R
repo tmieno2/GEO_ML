@@ -34,7 +34,7 @@ mc_sim_results <-
               pCorn = pCorn,
               pN = pN,
               sim = sim,
-              N_levels = N_levels
+              N_levels = ubN_levels
             ),
             error = function(e) NULL
           )

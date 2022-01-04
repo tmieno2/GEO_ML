@@ -40,7 +40,7 @@ field_data <-
   # ! This is where you set the experiment parameters
   CJ(
     # plot_length = 12, # the length of a plot (in number of cells)
-    plot_length = 6, # the length of a plot (in number of cells)
+    plot_length = 12, # the length of a plot (in number of cells)
     plot_width = 3, # the width of a plot (in number of cells)
     cell_buffer = 1,
     aunit_length = 2, # the length of an analysis unit (in number of cells)
@@ -50,7 +50,7 @@ field_data <-
     field_col = c(144), # the number of cell columns
     #* how tall the field is
     field_row = 72, # the number of row columns
-    sp_range = c(800),
+    sp_range = c(600),
     # gstat_model = "Exp",
     gstat_model = "Sph",
     #* prices
