@@ -21,15 +21,10 @@ gen_reg_data <- function(i, field_with_design, field_parameters) {
     cell_data[, .(sim, Nk)] %>%
     .[Nk > 300, Nk := 300] %>%
     .[, .(N_levels = list(
-      c(
-        # min(Nk) - 20,
-        min(Nk),
-        quantile(Nk, prob = 0.2),
-        quantile(Nk, prob = 0.4),
-        quantile(Nk, prob = 0.6),
-        quantile(Nk, prob = 0.8),
-        max(Nk)
-        # max(Nk) + 20
+      seq(
+        quantile(Nk, prob = 0.05),
+        quantile(Nk, prob = 0.95),
+        length = 6
       ) %>%
         pmax(0, .) %>%
         round()
@@ -65,7 +60,7 @@ gen_reg_data <- function(i, field_with_design, field_parameters) {
     field[cell_data, on = "cell_id"] %>%
     n_assign_data[., on = c("sim", "block_id", "plot_in_block_id")] %>%
     #* add cell-level N application noise to target N
-    .[, N := N_tgt * (1 + N_error * 0.1)] %>%
+    .[, N := N_tgt * (1 + N_error)] %>%
     .[N < 0, N := 0] %>%
     .[, N2 := N^2] %>%
     #* deterministic yield
@@ -80,7 +75,12 @@ gen_reg_data <- function(i, field_with_design, field_parameters) {
     .[,
       lapply(.SD, mean),
       by = .(sim, aunit_id),
-      .SDcols = c("yield", "yield_error", "N_tgt", "N", "N2", "b0", "b1", "b2", "Nk", "X", "Y")
+      .SDcols =
+        c(
+          "yield", "yield_error", "N_tgt", "N", "N2", "b0","b1", "b2", "b1_1", "b1_2", "b2_1", "b2_2",
+          "theta_1_1", "theta_1_2", "theta_2_1", "theta_2_2",
+          "Nk", "Nk_1", "Nk_2", "X", "Y"
+        )
     ] %>%
     nest_by_dt(by = "sim") %>%
     N_levels_data[., on = "sim"]

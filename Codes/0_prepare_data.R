@@ -121,6 +121,8 @@ saveRDS(field_with_design, here("Data/field_with_design.rds"))
 # /*===========================================================
 field_with_design <- readRDS(here("Data/field_with_design.rds"))
 
+set.seed(243730)
+
 field_parameters <-
   readRDS(here("Data/field_data.rds")) %>%
   mutate(field_pars = list(
@@ -135,8 +137,6 @@ field_parameters <-
 #* save the field parameters
 saveRDS(field_parameters, here("Data/field_parameters.rds"))
 
-
-
 # /*===========================================================
 #' # Create regression data
 # /*===========================================================
@@ -144,8 +144,11 @@ saveRDS(field_parameters, here("Data/field_parameters.rds"))
 
 field_parameters <- readRDS(here("Data/field_parameters.rds"))
 
+# field_parameters$field_pars[[1]]
+
 mclapply(
   1:nrow(field_with_design),
   function(x) gen_reg_data(x, field_with_design, field_parameters),
   mc.cores = 12
 )
+

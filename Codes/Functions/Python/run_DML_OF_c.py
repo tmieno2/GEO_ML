@@ -22,12 +22,14 @@ def run_DML_OF_c(
 ):
 
     est = DMLOrthoForest(
-        model_Y=GradientBoostingRegressor(
-            n_estimators=500, max_depth=5, min_samples_leaf=20
+        model_Y=WeightedLassoCVWrapper(cv=3),
+        model_T=WeightedLassoCVWrapper(cv=3),
+        model_Y_final=GradientBoostingRegressor(
+            n_estimators=200, max_depth=5, min_samples_leaf=20
         ),
-        model_T=MultiOutputRegressor(
+        model_T_final=MultiOutputRegressor(
             GradientBoostingRegressor(
-                n_estimators=500, max_depth=5, min_samples_leaf=20
+                n_estimators=200, max_depth=5, min_samples_leaf=20
             )
         ),
         n_trees=n_trees,

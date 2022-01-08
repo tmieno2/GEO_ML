@@ -3,10 +3,12 @@
 # /*===========================================================
 
 run_GWR_semi_analysis <- function(gam_formula, reg_data, N_levels, pN, pCorn) {
-  gam_setup <- gam(gam_formula, data = reg_data)
+  data <- copy(reg_data)
+
+  gam_setup <- gam(gam_formula, data = data)
 
   x_mat <-
-    predict(gam_setup, data = reg_data, type = "lpmatrix") %>%
+    predict(gam_setup, data = data, type = "lpmatrix") %>%
     #* get rid of the intercept
     .[, -1] %>%
     data.table() %>%
@@ -20,8 +22,8 @@ run_GWR_semi_analysis <- function(gam_formula, reg_data, N_levels, pN, pCorn) {
       paste0(var_names, collapse = "+")
     )
 
-  reg_data_sp <-
-    cbind(reg_data, x_mat) %>%
+  data_sp <-
+    cbind(data, x_mat) %>%
     st_as_sf(coords = c("X", "Y")) %>%
     as("Spatial")
 
@@ -31,7 +33,7 @@ run_GWR_semi_analysis <- function(gam_formula, reg_data, N_levels, pN, pCorn) {
   obw <-
     bw.gwr(
       gwr_formula,
-      data = reg_data_sp,
+      data = data_sp,
       approach = "AICc",
       kernel = "gaussian"
       # ,
@@ -41,7 +43,7 @@ run_GWR_semi_analysis <- function(gam_formula, reg_data, N_levels, pN, pCorn) {
   gwr_est <-
     gwr.basic(
       gwr_formula,
-      data = reg_data_sp,
+      data = data_sp,
       # bw = obw,
       bw = 60,
       kernel = "gaussian"
@@ -55,12 +57,12 @@ run_GWR_semi_analysis <- function(gam_formula, reg_data, N_levels, pN, pCorn) {
     .[, c("Intercept", var_names), with = FALSE] %>%
     data.table() %>%
     .[, geometry := NULL] %>%
-    .[, aunit_id := reg_data$aunit_id] %>%
+    .[, aunit_id := data$aunit_id] %>%
     setnames(var_names, paste0("b_", var_names))
 
   N_seq <-
     data.table(
-      N = quantile(reg_data$N, prob = seq(0, 1, length = 100))
+      N = quantile(data$N, prob = seq(0, 1, length = 100))
     )
 
   smth_N_seq <-
@@ -85,8 +87,8 @@ run_GWR_semi_analysis <- function(gam_formula, reg_data, N_levels, pN, pCorn) {
     eval_data %>%
     .[, profit := pCorn * y_hat - pN * N] %>%
     .[, .SD[which.max(profit), ], by = aunit_id] %>%
-    setnames("N", "opt_N_gwr_semi") %>%
-    .[, .(aunit_id, opt_N_gwr_semi)]
+    setnames("N", "opt_N_hat") %>%
+    .[, .(aunit_id, opt_N_hat)]
 
   return(gwr_semi_results)
 }

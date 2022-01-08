@@ -2,26 +2,26 @@
 #' # Continuous tretment DML_OF analysis
 # /*===========================================================
 
-run_DML_OF_c_analysis <- function(gam_formula, x_vars, w_vars, reg_data) {
-
+run_DML_OF_c_analysis <- function(gam_formula, x_vars, w_vars, reg_data, pN, pCorn, N_levels) {
+  data <- copy(reg_data)
   # /*+++++++++++++++++++++++++++++++++++
   #' ## Construct T matrix
   # /*+++++++++++++++++++++++++++++++++++
   #* gam set up
-  gam_setup <- gam(gam_formula, data = reg_data)
+  gam_setup <- gam(gam_formula, data = data)
 
   #* construct T matrix
   T_mat <-
-    predict(gam_setup, data = reg_data, type = "lpmatrix") %>%
+    predict(gam_setup, data = data, type = "lpmatrix") %>%
     #* get rid of the intercept
     .[, -1]
 
   # /*+++++++++++++++++++++++++++++++++++
   #' ## Define input data
   # /*+++++++++++++++++++++++++++++++++++
-  Y <- reg_data[, yield] %>% as.array() #* dependent var
-  X <- reg_data[, x_vars, with = FALSE] %>% as.matrix() #* het impact driver
-  W <- reg_data[, w_vars, with = FALSE] %>% as.matrix() #* controls
+  Y <- data[, yield] %>% as.array() #* dependent var
+  X <- data[, x_vars, with = FALSE] %>% as.matrix() #* het impact driver
+  W <- data[, w_vars, with = FALSE] %>% as.matrix() #* controls
 
   #* Define some hyper parameters
   subsample_ratio <- 0.3
@@ -46,7 +46,7 @@ run_DML_OF_c_analysis <- function(gam_formula, x_vars, w_vars, reg_data) {
   # /*+++++++++++++++++++++++++++++++++++
   N_data <-
     data.table(
-      N = quantile(reg_data$N, prob = seq(0, 1, length = 200))
+      N = quantile(data$N, prob = seq(0, 1, length = 200))
     )
 
   eval_data <-
@@ -65,7 +65,7 @@ run_DML_OF_c_analysis <- function(gam_formula, x_vars, w_vars, reg_data) {
     ) %>%
     reduce(`+`) %>%
     data.table() %>%
-    setnames(names(.), as.character(reg_data$aunit_id)) %>%
+    setnames(names(.), as.character(data$aunit_id)) %>%
     .[, N := N_data$N] %>%
     melt(id.var = "N") %>%
     setnames("variable", "aunit_id") %>%
@@ -76,7 +76,7 @@ run_DML_OF_c_analysis <- function(gam_formula, x_vars, w_vars, reg_data) {
     .[, profit := pCorn * value - pN * N] %>%
     .[, .SD[which.max(profit), ], by = aunit_id] %>%
     .[, .(aunit_id, N)] %>%
-    setnames("N", "opt_N_dmlof_c")
+    setnames("N", "opt_N_hat")
 
   return(dmlof_c_results)
 }

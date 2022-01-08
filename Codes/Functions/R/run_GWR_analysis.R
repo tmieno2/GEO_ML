@@ -4,6 +4,7 @@
 # ! Run GWR and do economic analysis
 
 run_GWR_analysis <- function(reg_data, N_levels, pN, pCorn) {
+  data <- copy(reg_data)
 
   # /*===========================================================
   #' # GWR-R (coefficient on N^2 global)
@@ -11,17 +12,17 @@ run_GWR_analysis <- function(reg_data, N_levels, pN, pCorn) {
   # /*+++++++++++++++++++++++++++++++++++
   #' ## Get the optimal bandwidth
   # /*+++++++++++++++++++++++++++++++++++
-  reg_data$yield_rest <- reg_data$yield - mean(reg_data$b2) * reg_data$N2
+  data$yield_rest <- data$yield - mean(data$b2) * data$N2
 
-  reg_data_sp <-
-    reg_data %>%
+  data_sp <-
+    data %>%
     st_as_sf(coords = c("X", "Y")) %>%
     as("Spatial")
 
   # === search for optimal bandwidth ===#
   obw <- bw.gwr(
     formula(yield_rest ~ N),
-    data = reg_data_sp,
+    data = data_sp,
     approach = "AICc",
     kernel = "gaussian"
   )
@@ -30,14 +31,14 @@ run_GWR_analysis <- function(reg_data, N_levels, pN, pCorn) {
   gwr_r <-
     data.table(
       b2_hat = seq(
-        min(reg_data$b2),
-        max(reg_data$b2),
+        min(data$b2),
+        max(data$b2),
         by = 0.05
       )
     ) %>%
     rowwise() %>%
     mutate(data = list(
-      reg_data %>%
+      data %>%
         mutate(yield_rest = yield - b2_hat * N2)
     )) %>%
     mutate(data_sp = list(
@@ -79,7 +80,7 @@ run_GWR_analysis <- function(reg_data, N_levels, pN, pCorn) {
   #----------------------------
   gwr_beta <-
     data.table(
-      aunit_id = reg_data$aunit_id,
+      aunit_id = data$aunit_id,
       b0_hat = gwr_r$gwr_est[[1]]$SDF$Intercept,
       b1_hat = gwr_r$gwr_est[[1]]$SDF$N,
       b2_hat = gwr_r$b2_hat
@@ -117,7 +118,8 @@ run_GWR_analysis <- function(reg_data, N_levels, pN, pCorn) {
     .[, opt_N_gwr := pmin(opt_N_gwr, max(N_levels))] %>%
     .[, opt_N_gwr := pmax(opt_N_gwr, min(N_levels))] %>%
     # === keep columns ===#
-    .[, .(aunit_id, b0_hat, b1_hat, b2_hat, opt_N_gwr)]
+    .[, .(aunit_id, opt_N_gwr)] %>%
+    setnames("opt_N_gwr", "opt_N_hat")
 
   return(gwr_beta)
 }

@@ -67,6 +67,7 @@ field_with_design <- readRDS(here("Data/field_with_design.rds"))
 sim_data <-
   field_with_design$data_file_name %>%
   readRDS()
+
 ```
 
 ## Find true optimal N
@@ -101,10 +102,14 @@ temp <-
 
 ```{r }
 
-run_analysis <- function(sim_i, pN, pCorn) {
+
+
+run_analysis <- function(sim_i, x_vars, models_data, pN, pCorn) {
+  print(sim_i)
 
   # /*+++++++++++++++++++++++++++++++++++
   #' ## Prepare data
+  # /*+++++++++++++++++++++++++++++++++++
   # /*+++++++++++++++++++++++++++++++++++
   #* extract the data for the sim_i
   temp_data <- sim_data$reg_data[[1]][sim == sim_i, ]
@@ -114,238 +119,125 @@ run_analysis <- function(sim_i, pN, pCorn) {
   reg_data <-
     temp_data$data[[1]] %>%
     .[, x := (X - min(X)) / (max(X) - min(X))] %>%
-    .[, y := (Y - min(Y)) / (max(Y) - min(Y))]
+    .[, y := (Y - min(Y)) / (max(Y) - min(Y))] %>%
+    .[, xy := x * y] %>%
+    .[, N2 := N^2]
 
-  # /*+++++++++++++++++++++++++++++++++++
-  #' ## GWR
-  # /*+++++++++++++++++++++++++++++++++++
-  gwr_results <-
-    run_GWR_analysis(
-      reg_data,
-      N_levels,
-      pN,
-      pCorn
-    )
+  # reg_data[, N] %>% hist(breaks = 30)
+  # ggplot(reg_data) +
+  #   geom_point(aes(y = yield, x = N))
 
-  # /*+++++++++++++++++++++++++++++++++++
-  #' ## semi-parametric GWR
-  # /*+++++++++++++++++++++++++++++++++++
-  semi_gwr_results <-
-    run_GWR_semi_analysis(
-      formula(yield ~ s(N, k = 4), m = 2),
-      reg_data,
-      N_levels,
-      pN, pCorn
-    )
-
-  # /*+++++++++++++++++++++++++++++++++++
-  #' ## GWR-zone SCAM
-  # /*+++++++++++++++++++++++++++++++++++
-  gwr_scam_results <-
-    run_gwr_zone_scam_analysis(
-      gwr_results = gwr_results,
-      reg_results = reg_results,
-      num_zones = 3,
-      pCorn = pCorn,
-      pN = pN
-    )
-
-  # /*+++++++++++++++++++++++++++++++++++
-  #' ## Multiarm CF (grf package)
-  # /*+++++++++++++++++++++++++++++++++++
-  Y <- reg_data[, yield]
-  W_f <- as.factor(reg_data[, N_tgt])
-  X <- reg_data[, c("b0", "b1", "b2", "Nk"), with = FALSE]
-
-  macf_tau <- grf::multi_arm_causal_forest(X, Y, W_f)
-
-  macf_results <-
-    predict(macf_tau)[[1]][, , 1] %>%
-    data.table() %>%
-    .[, aunit_id := reg_data[, aunit_id]] %>%
-    melt(id.var = "aunit_id") %>%
-    .[, N := as.numeric(str_extract(variable, "^[^-]*"))] %>%
-    .[, profit := pCorn * value - pN * N] %>%
-    .[, .SD[which.max(profit), ], by = aunit_id] %>%
-    .[profit < 0, N := N_levels[1]] %>%
-    setnames("N", "opt_N_macf")
-
-  # /*+++++++++++++++++++++++++++++++++++
-  #' ## BRF (grf package)
-  # /*+++++++++++++++++++++++++++++++++++
-  X <- reg_data[, c("N", "b0", "b1", "b2", "Nk"), with = FALSE] %>% data.frame()
-  Y <- reg_data[, yield]
-  BRF_temp <-
-    grf::boosted_regression_forest(
-      X = X,
-      Y = Y,
-      num.trees = 2000,
-      min.node.size = 10
-    )
-
-  N_seq <-
-    data.table(
-      N = seq(min(reg_data$N), max(reg_data$N), by = 2)
-    )
-
-  brf_results <-
-    copy(reg_data) %>%
-    .[, c("aunit_id", "b0", "b1", "b2", "Nk", "yield"), with = FALSE] %>%
-    expand_grid_df(., N_seq) %>%
-    .[, yield_hat := predict(BRF_temp,
-      newdata = .[, c("N", "b0", "b1", "b2", "Nk"), with = FALSE]
-    )] %>%
-    .[, pi_hat := pCorn * yield_hat - pN * N] %>%
-    .[, .SD[which.max(pi_hat)], by = aunit_id] %>%
-    .[, opt_N_brf := N] %>%
-    .[, c("aunit_id", "opt_N_brf")]
-
-  # /*+++++++++++++++++++++++++++++++++++
-  #' ## Continuous treatment DML-OF
-  # /*+++++++++++++++++++++++++++++++++++
-  dmlof_c_results <-
-    run_DML_OF_c_analysis(
-      gam_formula = formula(yield ~ s(N, k = 4, m = 2)),
-      x_vars = c("b0", "b1", "b2", "Nk"),
-      w_vars = c("b0", "b1", "b2", "Nk", "x", "y"),
-      reg_data = reg_data
-    )
-
-  # /*+++++++++++++++++++++++++++++++++++
-  #' ## DROF
-  # /*+++++++++++++++++++++++++++++++++++
-  N_tgt_rank_data <-
-    reg_data[, .(N_tgt = unique(N_tgt))] %>%
-    .[, N_tgt_rank := rank(N_tgt) - 1]
-
-  base_tgt_rate <- N_tgt_rank_data[N_tgt_rank == 0, N_tgt]
-
-  reg_data <- N_tgt_rank_data[reg_data, on = "N_tgt"]
-
-  Y <- reg_data[, yield] %>% as.array() #* dependent var
-  T <- reg_data[, N_tgt_rank] %>% as.array() #* treatment
-  # X <- reg_data[, .(x, y, x * y, x^2, y^2, x^2 * y^2, x^3, y^3)] %>% as.matrix() #* het impact driver
-  X <- reg_data[, .(b0, b1, b2, Nk)] %>% as.matrix() #* het impact driver
-  W <- reg_data[, .(b0, b1, b2, Nk, x, y, x * y)] %>% as.matrix() #* het impact driver #* controls
-  W <- X #* controls
-
-  #* Define some hyper parameters
-  subsample_ratio <- 0.3
-  lambda_reg <- sqrt(log(ncol(W)) / (10 * subsample_ratio * nrow(Y)))
-
-  #* estimate Doubly-Robus Orthogonal Forest
-  DR_OF_res <-
-    run_DR_OF(
-      Y = Y,
-      T = T,
-      X = X,
-      W = W,
-      X_test = X,
-      se = FALSE,
-      subsample_ratio = subsample_ratio,
-      lambda_reg = lambda_reg
-    )
-
-  #* make tau to a data.table
-  tau_hat <-
-    DR_OF_res %>%
-    data.table()
-
-  #* assign the estimated impact to analysis units
-  tau_data <-
-    cbind(reg_data[, .(aunit_id)], tau_hat) %>%
-    melt(id.var = "aunit_id") %>%
-    setnames("value", "tau") %>%
-    .[, N_tgt_rank := gsub("V", "", variable) %>% as.numeric()] %>%
-    N_tgt_rank_data[., on = "N_tgt_rank"] %>%
-    .[, .(aunit_id, N_tgt, tau)] %>%
+  results <-
+    models_data %>%
+    .[on == TRUE, ] %>%
+    rowwise() %>%
+    mutate(results = list(
+      run_indiv_analysis(model, reg_data, x_vars, pN, pCorn, N_levels)
+    )) %>%
+    mutate(results = list(
+      mutate(results, model = model)
+    )) %>%
+    pull(results) %>%
+    rbindlist() %>%
     .[, sim := sim_i]
 
-  # /*---------------------
-  #' ### Raw
-  # /*---------------------
-  eonr_drof <-
-    tau_data %>%
-    .[, pi_delta := pCorn * tau - pN * N_tgt] %>%
-    .[, .SD[which.max(pi_delta), ], by = aunit_id] %>%
-    setnames("N_tgt", "opt_N_drof") %>%
-    .[pi_delta < 0, opt_N_drof := base_tgt_rate] %>%
-    .[, .(aunit_id, opt_N_drof)]
-
-  drof_results <- eonr_drof[tau_data, on = "aunit_id"]
-
-  # /*---------------------
-  #' ### Spatial smoothing of tau
-  # /*---------------------
-  sp_smoothed_tau <-
-    reg_data[, .(aunit_id, X, Y)][tau_data, on = "aunit_id"] %>%
-    nest_by(N_tgt) %>%
-    mutate(gam_res = list(
-      gam(
-        tau ~
-        s(X, k = 6) + s(Y, k = 6) + ti(X, Y, k = c(6, 6)),
-        data = data
-      )
-    )) %>%
-    mutate(data = list(
-      mutate(data, tau_smth = predict(gam_res, newdata = data))
-    )) %>%
-    dplyr::select(N_tgt, data) %>%
-    unnest() %>%
-    ungroup() %>%
-    data.table()
-
-  # nest_by(aunit_id) %>%
-  # mutate(scam_res = list(
-  #   scam(tau ~ s(N, k = 3, bs = "micv"), data = data)
-  # )) %>%
-  # mutate(data = list(
-  #   mutate(data, tau_smth_gam = predict(gam_res, newdata = data))
-  # )) %>%
-  # dplyr::select(data) %>%
-  # unnest() %>%
-  # data.table()
-
-  drof_smth_results <-
-    sp_smoothed_tau %>%
-    .[, pi_delta := pCorn * tau_smth - pN * N_tgt] %>%
-    .[, .SD[which.max(pi_delta), ], by = aunit_id] %>%
-    setnames("N_tgt", "opt_N_drof_smth") %>%
-    .[pi_delta < 0, opt_N_drof_smth := base_tgt_rate] %>%
-    .[, .(aunit_id, opt_N_drof_smth)]
-
-  eonr_results <-
-    gwr_results[drof_results, on = "aunit_id"] %>%
-    drof_smth_results[., on = "aunit_id"] %>%
-    gwr_scam_results[., on = "aunit_id"] %>%
-    semi_gwr_results[., on = "aunit_id"] %>%
-    dmlof_c_results[., on = "aunit_id"] %>%
-    brf_results[., on = "aunit_id"] %>%
-    macf_results[., on = "aunit_id"] %>%
-    .[, .(sim, aunit_id, opt_N_gwr, opt_N_drof, opt_N_drof_smth, opt_N_scam, opt_N_gwr_semi, opt_N_dmlof_c, opt_N_brf, opt_N_macf)]
-
-  return(eonr_results)
+  return(results)
 }
 ```
 
 
 ## Run simulation
 
+ 
 ```{r }
-sim_i <- 8
-eonr_results <- run_analysis(sim_i = sim_i, pN, pCorn)
+models_data <-
+  data.table(
+    model = c(
+      "lm", # linear quadratic
+      "gwr_t", # gwr-trevisan
+      "gwr_semi", # gwr-semiparametric
+      "gwr_zone_scam", # scam by zone,
+      "ma_cf", # multiarm-CF
+      "brf", # boosted RF
+      "dmlof_semi", # semiparmetric DML-OF
+      "drof" # DR-OF
+    ),
+    on = c(
+      TRUE, # lm
+      FALSE, # gwr_t
+      FALSE, # gwr_semi
+      FALSE, # gwr_zone_scam
+      FALSE, # ma_cf
+      TRUE, # brf
+      TRUE, # dmlof_semi
+      FALSE # drof
+    )
+  )
+
+x_vars <-
+  c(
+    "b1_1", "b1_2", "b2_1", "b2_2", "Nk_1", "Nk_2",
+    "theta_1_1", "theta_1_2", "theta_2_1", "theta_2_2"
+  )
+
+sim_range <- 51:60
+
+eonr_results <-
+  lapply(
+    sim_range,
+    function(x) run_analysis(sim_i = x, x_vars, models_data, pN, pCorn)
+  ) %>%
+  rbindlist()
+
+# eonr_results[, .N, by = .(model, sim, aunit_id)] %>%
+#   .[, .N] %>%
+#   hist()
+
+profit <-
+  eonr_results %>%
+  nest_by(model) %>%
+  mutate(
+    data =
+      field_pars[sim %in% sim_range, ] %>%
+        data.table(field_data)[, .(cell_id, aunit_id)][., on = "cell_id"] %>%
+        data.table(data)[., , on = c("sim", "aunit_id")] %>%
+        .[, yield := gen_yield_QP(b0, b1, b2, Nk, opt_N_hat)] %>%
+        .[, profit := pCorn * yield - pN * opt_N_hat] %>%
+        .[, mean(profit, na.rm = TRUE)]
+  )
+```
+
+```{r }
+eonr_results <-
+  lapply(
+    1:50,
+    function(x) run_analysis(sim_i = x, pN, pCorn)
+  ) %>%
+  rbindlist()
+
+eonr_results <- readRDS("Results/eonr_results_1_50.rds")
 
 field_tau <-
-  field_pars[sim == sim_i, ] %>%
-  left_join(., field_data, by = "cell_id") %>%
-  left_join(., eonr_results, by = "aunit_id")
+  field_pars[sim %in% 1:50, ] %>%
+  data.table(field_data)[, .(cell_id, aunit_id)][., on = "cell_id"] %>%
+  unique(eonr_results, by = c("sim", "aunit_id"))[., on = c("sim", "aunit_id")]
 ```
 
 ## Profit assessment
 
 ```{r }
 field_tau %>%
-  .[, .(cell_id, b0, b1, b2, Nk, opt_N, opt_N_drof, opt_N_drof_smth, opt_N_gwr, opt_N_scam, opt_N_gwr_semi, opt_N_dmlof_c, opt_N_brf, opt_N_macf)] %>%
+  .[, .(
+    cell_id, b0, b1, b2, Nk, opt_N,
+    opt_N_drof,
+    opt_N_drof_smth,
+    # opt_N_gwr,
+    # opt_N_scam,
+    # opt_N_gwr_semi,
+    opt_N_dmlof_c,
+    opt_N_brf,
+    opt_N_macf
+  )] %>%
   melt(id.var = c("cell_id", "b0", "b1", "b2", "Nk")) %>%
   .[!is.na(value), ] %>%
   .[, yield := gen_yield_QP(b0, b1, b2, Nk, value)] %>%
@@ -382,5 +274,6 @@ ggplot(field_tau) +
   geom_point(aes(y = opt_N, x = opt_N_dmlof_c)) +
   geom_abline(slope = 1, color = "red") +
   coord_equal()
+
 ```
 
