@@ -4,7 +4,7 @@
 # ! Run GWR and do economic analysis
 
 
-run_linear_analysis <- function(reg_data, x_vars, pN, pCorn, N_levels) {
+run_linear_analysis <- function(reg_data, cv_data, x_vars, pN, pCorn, N_levels) {
   data <- copy(reg_data)
 
   control_vars <- paste0(x_vars, collapse = "+")
@@ -32,7 +32,7 @@ run_linear_analysis <- function(reg_data, x_vars, pN, pCorn, N_levels) {
     .[, N2 := N^2]
 
   ols_results <-
-    data %>%
+    copy(cv_data$data[[1]]) %>%
     .[, `:=`(
       N = NULL,
       N2 = NULL
@@ -42,7 +42,8 @@ run_linear_analysis <- function(reg_data, x_vars, pN, pCorn, N_levels) {
     .[, pi_hat := pCorn * y_hat - pN * N] %>%
     .[, .SD[which.max(pi_hat), ], by = aunit_id] %>%
     .[, .(aunit_id, N)] %>%
-    setnames("N", "opt_N_hat")
+    setnames("N", "opt_N_hat") %>%
+    .[, sim := cv_data$sim]
 
   return(ols_results)
 }

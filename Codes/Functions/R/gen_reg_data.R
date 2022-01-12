@@ -56,13 +56,17 @@ gen_reg_data <- function(i, field_with_design, field_parameters) {
     ) %>%
     rbindlist()
 
+  vars_to_summarize <-
+    names(cell_data) %>%
+    .[!(. %in% c("sim", "cell_id", "m_error", "N_error"))] %>%
+    c(., c("yield", "N", "X", "Y", "N_tgt"))
+
   reg_data <-
     field[cell_data, on = "cell_id"] %>%
     n_assign_data[., on = c("sim", "block_id", "plot_in_block_id")] %>%
     #* add cell-level N application noise to target N
     .[, N := N_tgt * (1 + N_error)] %>%
     .[N < 0, N := 0] %>%
-    .[, N2 := N^2] %>%
     #* deterministic yield
     .[, det_yield := gen_yield_QP(b0, b1, b2, Nk, N)] %>%
     #* create yield errors
@@ -75,13 +79,9 @@ gen_reg_data <- function(i, field_with_design, field_parameters) {
     .[,
       lapply(.SD, mean),
       by = .(sim, aunit_id),
-      .SDcols =
-        c(
-          "yield", "yield_error", "N_tgt", "N", "N2", "b0","b1", "b2", "b1_1", "b1_2", "b2_1", "b2_2",
-          "theta_1_1", "theta_1_2", "theta_2_1", "theta_2_2",
-          "Nk", "Nk_1", "Nk_2", "X", "Y"
-        )
+      .SDcols = vars_to_summarize
     ] %>%
+    .[, N2 := N^2] %>%
     nest_by_dt(by = "sim") %>%
     N_levels_data[., on = "sim"]
 

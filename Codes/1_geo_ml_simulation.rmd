@@ -60,6 +60,9 @@ field_data <-
 #* Read field parameters
 field_parameters <- readRDS(here("Data/field_parameters.rds"))
 
+#* number of simulation cases
+nsim <- field_parameters$field_pars[[1]][, max(sim)]
+
 #* Read field data
 field_with_design <- readRDS(here("Data/field_with_design.rds"))
 
@@ -101,10 +104,7 @@ temp <-
 ## Define simulation function
 
 ```{r }
-
-
-
-run_analysis <- function(sim_i, x_vars, models_data, pN, pCorn) {
+run_analysis <- function(sim_i, x_vars, models_data, pN, pCorn, nsim) {
   print(sim_i)
 
   # /*+++++++++++++++++++++++++++++++++++
@@ -112,12 +112,13 @@ run_analysis <- function(sim_i, x_vars, models_data, pN, pCorn) {
   # /*+++++++++++++++++++++++++++++++++++
   # /*+++++++++++++++++++++++++++++++++++
   #* extract the data for the sim_i
-  temp_data <- sim_data$reg_data[[1]][sim == sim_i, ]
+  train_data <- sim_data$reg_data[[1]][sim == sim_i, ]
+  cv_data <- sim_data$reg_data[[1]][sim == ifelse(sim_i + 1 > nsim, 1, sim_i + 1), ]
 
   #* define parameters
-  N_levels <- temp_data$N_levels[[1]]
+  N_levels <- train_data$N_levels[[1]]
   reg_data <-
-    temp_data$data[[1]] %>%
+    train_data$data[[1]] %>%
     .[, x := (X - min(X)) / (max(X) - min(X))] %>%
     .[, y := (Y - min(Y)) / (max(Y) - min(Y))] %>%
     .[, xy := x * y] %>%
@@ -132,14 +133,13 @@ run_analysis <- function(sim_i, x_vars, models_data, pN, pCorn) {
     .[on == TRUE, ] %>%
     rowwise() %>%
     mutate(results = list(
-      run_indiv_analysis(model, reg_data, x_vars, pN, pCorn, N_levels)
+      run_indiv_analysis(model, reg_data, cv_data, x_vars, pN, pCorn, N_levels)
     )) %>%
     mutate(results = list(
       mutate(results, model = model)
     )) %>%
     pull(results) %>%
-    rbindlist() %>%
-    .[, sim := sim_i]
+    rbindlist()
 
   return(results)
 }
@@ -160,6 +160,7 @@ models_data <-
       "ma_cf", # multiarm-CF
       "brf", # boosted RF
       "dmlof_semi", # semiparmetric DML-OF
+      "dmlof_quad", # semiparmetric DML-OF
       "drof" # DR-OF
     ),
     on = c(
@@ -167,25 +168,30 @@ models_data <-
       FALSE, # gwr_t
       FALSE, # gwr_semi
       FALSE, # gwr_zone_scam
-      FALSE, # ma_cf
+      TRUE, # ma_cf
       TRUE, # brf
-      TRUE, # dmlof_semi
+      FALSE, # dmlof_semi
+      FALSE, # dmlof_quad
       FALSE # drof
     )
   )
 
 x_vars <-
   c(
-    "b1_1", "b1_2", "b2_1", "b2_2", "Nk_1", "Nk_2",
-    "theta_1_1", "theta_1_2", "theta_2_1", "theta_2_2"
+    "b0_1", "b0_2",
+    "Nk_2_1", "Nk_2_2", "Nk_1_1", "Nk_1_2",
+    "plateau_2_1", "plateau_2_2", "plateau_1_1", "plateau_1_2",
+    "theta_plateau_1", "theta_plateau_2",
+    "theta_Nk_1", "theta_Nk_2",
+    "theta_b0_1", "theta_b0_2"
   )
 
-sim_range <- 51:60
+sim_range <- 101:200
 
 eonr_results <-
   lapply(
     sim_range,
-    function(x) run_analysis(sim_i = x, x_vars, models_data, pN, pCorn)
+    function(x) run_analysis(sim_i = x, x_vars, models_data, pN, pCorn, nsim)
   ) %>%
   rbindlist()
 
@@ -197,7 +203,7 @@ profit <-
   eonr_results %>%
   nest_by(model) %>%
   mutate(
-    data =
+    profit =
       field_pars[sim %in% sim_range, ] %>%
         data.table(field_data)[, .(cell_id, aunit_id)][., on = "cell_id"] %>%
         data.table(data)[., , on = c("sim", "aunit_id")] %>%

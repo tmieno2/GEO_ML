@@ -122,99 +122,44 @@ gen_field_pars <- function(sp_range, gstat_model, field_sf, nsim) {
   #' ## Splitting parameters
   # /*+++++++++++++++++++++++++++++++++++
   # /*---------------------
-  #' ### b1
+  #' ### split b1
   # /*---------------------
-  b1_split_factor <-
-    gen_pars(
-      mean = 0,
-      psill = 1,
-      range = sp_range,
-      coef_name = "b1sf",
-      gstat_model = gstat_model,
-      xy = xy,
-      nsim = nsim
-    ) %>%
-    # >>> normalize <<<
-    .[, min_b1sf := min(b1sf), by = sim] %>%
-    .[, max_b1sf := max(b1sf), by = sim] %>%
-    .[, b1sf := punif(b1sf, min_b1sf, max_b1sf) + 0.5] %>%
-    .[, b1sf_slack := pmax(1 - b1sf, 0)] %>%
-    .[, c("cell_id", "sim", "b1sf", "b1sf_slack")]
-
   cell_data <-
-    b1_split_factor[cell_data, on = c("sim", "cell_id")] %>%
-    .[, b1_1 := b1 * b1sf] %>%
-    .[b1_1 < b1, b1_1 := b1] %>%
-    .[, b1_2 := fifelse(b1_1 > b1, b1, b1 * (1 + b1sf_slack))]
+    cell_data %>%
+    #* split b0 (additive): b0_1 and b0_2
+    split_par_additive("b0", ., nsim, xy, sp_range, gstat_model)[., on = c("sim", "cell_id")] %>%
+    #* split plateau (min): plateau_1 and plateau_2
+    split_par_min("plateau", ., nsim, xy, sp_range, gstat_model)[., on = c("sim", "cell_id")] %>%
+    #* split plateau_1 (min): plateau_1_1 and plateau_1_2
+    split_par_min("plateau_1", ., nsim, xy, sp_range, gstat_model)[., on = c("sim", "cell_id")] %>%
+    #* split plateau_2 (min): plateau_2_1 and plateau_2_2
+    split_par_min("plateau_2", ., nsim, xy, sp_range, gstat_model)[., on = c("sim", "cell_id")] %>%
+    #* split Nk (additive): Nk_1 and Nk_2
+    split_par_additive("Nk", ., nsim, xy, sp_range, gstat_model)[., on = c("sim", "cell_id")] %>%
+    #* split Nk_1 (additive): Nk_1_1 and Nk_1_2
+    split_par_additive("Nk_1", ., nsim, xy, sp_range, gstat_model)[., on = c("sim", "cell_id")] %>%
+    #* split Nk_2 (additive): Nk_2_1 and Nk_2_2
+    split_par_additive("Nk_2", ., nsim, xy, sp_range, gstat_model)[., on = c("sim", "cell_id")] 
 
-  # identical(cell_data[, pmin(b1_1, b1_2)], cell_data[, b1])
-
-  # /*---------------------
-  #' ### b2
-  # /*---------------------
-  b2_split_factor <-
-    gen_pars(
-      mean = 0,
-      psill = 1,
-      range = sp_range,
-      coef_name = "b2sf",
-      gstat_model = gstat_model,
-      xy = xy,
-      nsim = nsim
-    ) %>%
-    # >>> normalize <<<
-    .[, min_b2sf := min(b2sf), by = sim] %>%
-    .[, max_b2sf := max(b2sf), by = sim] %>%
-    .[, b2sf := punif(b2sf, min_b2sf, max_b2sf) + 0.5] %>%
-    .[, b2sf_slack := pmax(1 - b2sf, 0)] %>%
-    .[, c("cell_id", "sim", "b2sf", "b2sf_slack")]
-
-  cell_data <-
-    b2_split_factor[cell_data, on = c("sim", "cell_id")] %>%
-    .[, b2_1 := b2 * b2sf] %>%
-    .[b2_1 < b2, b2_1 := b2] %>%
-    .[, b2_2 := fifelse(b2_1 > b2, b2, b2 * (1 + b2sf_slack))]
-
-  # /*---------------------
-  #' ### Nk
-  # /*---------------------
-  Nk_split_factor <-
-    gen_pars(
-      mean = 0,
-      psill = 1,
-      range = sp_range,
-      coef_name = "Nksf",
-      gstat_model = gstat_model,
-      xy = xy,
-      nsim = nsim
-    ) %>%
-    # >>> normalize <<<
-    .[, min_Nksf := min(Nksf), by = sim] %>%
-    .[, max_Nksf := max(Nksf), by = sim] %>%
-    .[, Nksf := punif(Nksf, min_Nksf, max_Nksf) + 0.5] %>%
-    .[, Nksf_slack := pmax(1 - Nksf, 0)] %>%
-    .[, c("cell_id", "sim", "Nksf", "Nksf_slack")]
-
-  cell_data <-
-    Nk_split_factor[cell_data, on = c("sim", "cell_id")] %>%
-    .[, Nk_1 := Nk * Nksf] %>%
-    .[Nk_1 < Nk, Nk_1 := Nk] %>%
-    .[, Nk_2 := fifelse(Nk_1 > Nk, Nk, Nk * (1 + Nksf_slack))]
+    # identical(cell_data[, pmin(b1_1, b1_2)], cell_data[, b1])
 
   # /*+++++++++++++++++++++++++++++++++++
-  #' ## Irrelevant parameters
+  #' ## Create irrelevant parameters
   # /*+++++++++++++++++++++++++++++++++++
   cell_data <-
     cell_data %>%
     .[, .(data = list(.SD)), by = sim] %>%
     rowwise() %>%
+    #* create irrelevant variables
     mutate(data = list(
       mutate(
         data,
-        theta_1_1 = faux::rnorm_pre(b1, mu = 0, r = 0.7),
-        theta_1_2 = faux::rnorm_pre(b1, mu = 0, r = 0.7),
-        theta_2_1 = faux::rnorm_pre(b2, mu = 0, r = 0.7),
-        theta_2_2 = faux::rnorm_pre(b2, mu = 0, r = 0.7)
+        theta_plateau_1 = faux::rnorm_pre(plateau, mu = 0, r = 0.7),
+        theta_plateau_2 = faux::rnorm_pre(plateau, mu = 0, r = 0.7),
+        theta_Nk_1 = faux::rnorm_pre(Nk, mu = 0, r = 0.7),
+        theta_Nk_2 = faux::rnorm_pre(Nk, mu = 0, r = 0.7),
+        theta_b0_1 = faux::rnorm_pre(b0, mu = 0, r = 0.7),
+        theta_b0_2 = faux::rnorm_pre(b0, mu = 0, r = 0.7)
       )
     )) %>%
     unnest() %>%
