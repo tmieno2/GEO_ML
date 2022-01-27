@@ -3,9 +3,8 @@
 # /*===========================================================
 # ! Run GWR and do economic analysis
 
-
-run_linear_analysis <- function(reg_data, cv_data, x_vars, pN, pCorn, N_levels) {
-  data <- copy(reg_data)
+run_linear_analysis <- function(train_data, test_data, x_vars, prices) {
+  reg_data <- copy(train_data)
 
   control_vars <- paste0(x_vars, collapse = "+")
   int_vars <-
@@ -23,27 +22,14 @@ run_linear_analysis <- function(reg_data, cv_data, x_vars, pN, pCorn, N_levels) 
     ) %>%
     formula()
 
-  ols_res <- fixest::feols(feols_formula, data = data)
-
-  N_data <-
-    data.table(
-      N = seq(min(N_levels), max(N_levels), length = 50)
-    ) %>%
-    .[, N2 := N^2]
+  ols_res <- fixest::feols(feols_formula, data = reg_data)
 
   ols_results <-
-    copy(cv_data$data[[1]]) %>%
-    .[, `:=`(
-      N = NULL,
-      N2 = NULL
-    )] %>%
-    expand_grid_df(., N_data) %>%
+    copy(test_data) %>%
     .[, y_hat := predict(ols_res, newdata = .)] %>%
-    .[, pi_hat := pCorn * y_hat - pN * N] %>%
+    .[, pi_hat := prices[, yield] * y_hat - prices[, N] * N] %>%
     .[, .SD[which.max(pi_hat), ], by = aunit_id] %>%
-    .[, .(aunit_id, N)] %>%
-    setnames("N", "opt_N_hat") %>%
-    .[, sim := cv_data$sim]
+    .[, .(aunit_id, N)]
 
   return(ols_results)
 }

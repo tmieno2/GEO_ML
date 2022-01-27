@@ -110,36 +110,81 @@ run_analysis <- function(sim_i, x_vars, models_data, pN, pCorn, nsim) {
   # /*+++++++++++++++++++++++++++++++++++
   #' ## Prepare data
   # /*+++++++++++++++++++++++++++++++++++
-  # /*+++++++++++++++++++++++++++++++++++
-  #* extract the data for the sim_i
-  train_data <- sim_data$reg_data[[1]][sim == sim_i, ]
-  cv_data <- sim_data$reg_data[[1]][sim == ifelse(sim_i + 1 > nsim, 1, sim_i + 1), ]
 
-  #* define parameters
-  N_levels <- train_data$N_levels[[1]]
-  reg_data <-
-    train_data$data[[1]] %>%
+  #* extract the data for the sim_i
+  data <- sim_data$reg_data[[1]][sim == sim_i, ]
+
+  #* raw train data
+  train_data <-
+    data$data[[1]] %>%
     .[, x := (X - min(X)) / (max(X) - min(X))] %>%
     .[, y := (Y - min(Y)) / (max(Y) - min(Y))] %>%
     .[, xy := x * y] %>%
     .[, N2 := N^2]
 
-  # reg_data[, N] %>% hist(breaks = 30)
-  # ggplot(reg_data) +
-  #   geom_point(aes(y = yield, x = N))
+  #* scale data
+  scaler_data <-
+    train_data[, c("aunit_id", "yield", "N", "N2", x_vars), with = FALSE] %>%
+    melt(id.vars = "aunit_id") %>%
+    nest_by(variable) %>%
+    mutate(scaler = 1 / max(data$value)) %>%
+    data.table() %>%
+    .[, .(variable, scaler)]
+
+  #* scale the train data
+  scaled_train_data <-
+    train_data[, c("aunit_id", "yield", "N", "N2", x_vars), with = FALSE] %>%
+    scale_data(., scaler_data)
+
+  #* define parameters
+  N_levels <- data$N_levels[[1]]
+
+  #* scaled test data
+  N_eval_data <-
+    data.table(
+      N = seq(min(N_levels), max(N_levels), length = 50)
+    ) %>%
+    .[, N2 := N^2]
+
+  scaled_test_data <-
+    sim_data$reg_data[[1]] %>%
+    .[sim == ifelse(sim_i + 1 > nsim, 1, sim_i + 1), ] %>%
+    .$data %>%
+    .[[1]] %>%
+    .[, c("aunit_id", "yield", "N", "N2", x_vars), with = FALSE] %>%
+    .[, `:=`(
+      N = NULL,
+      N2 = NULL
+    )] %>%
+    expand_grid_df(., N_eval_data) %>%
+    scale_data(., scaler_data)
+
+  scaled_prices <-
+    data.table(
+      yield = pCorn,
+      N = pN
+    ) %>%
+    scale_data(., scaler_data, back = TRUE)
 
   results <-
     models_data %>%
     .[on == TRUE, ] %>%
     rowwise() %>%
     mutate(results = list(
-      run_indiv_analysis(model, reg_data, cv_data, x_vars, pN, pCorn, N_levels)
+      run_indiv_analysis(
+        model = model,
+        train_data = scaled_train_data,
+        test_data = scaled_test_data,
+        x_vars = x_vars,
+        prices = scaled_prices
+      )
     )) %>%
     mutate(results = list(
       mutate(results, model = model)
     )) %>%
     pull(results) %>%
-    rbindlist()
+    rbindlist() %>%
+    scale_data(., scaler_data, back = TRUE)
 
   return(results)
 }
@@ -168,8 +213,8 @@ models_data <-
       FALSE, # gwr_t
       FALSE, # gwr_semi
       FALSE, # gwr_zone_scam
-      TRUE, # ma_cf
-      TRUE, # brf
+      FALSE, # ma_cf
+      FALSE, # brf
       FALSE, # dmlof_semi
       FALSE, # dmlof_quad
       FALSE # drof
@@ -186,7 +231,7 @@ x_vars <-
     "theta_b0_1", "theta_b0_2"
   )
 
-sim_range <- 101:200
+sim_range <- 1:20
 
 eonr_results <-
   lapply(

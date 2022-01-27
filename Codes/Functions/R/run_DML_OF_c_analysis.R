@@ -2,7 +2,7 @@
 #' # Continuous tretment DML_OF analysis
 # /*===========================================================
 
-run_DML_OF_c_analysis <- function(gam_formula, x_vars, w_vars, reg_data, pN, pCorn, N_levels) {
+run_DML_OF_c_analysis <- function(gam_formula, x_vars, w_vars, reg_data, cv_data, pN, pCorn, N_levels) {
   data <- copy(reg_data)
   # /*+++++++++++++++++++++++++++++++++++
   #' ## Construct T matrix
@@ -22,9 +22,13 @@ run_DML_OF_c_analysis <- function(gam_formula, x_vars, w_vars, reg_data, pN, pCo
   Y <- data[, yield] %>% as.array() #* dependent var
   X <- data[, x_vars, with = FALSE] %>% as.matrix() #* het impact driver
   W <- data[, w_vars, with = FALSE] %>% as.matrix() #* controls
+  X_cv <-
+    cv_data$data[[1]] %>%
+    .[, x_vars, with = FALSE] %>%
+    as.matrix()
 
   #* Define some hyper parameters
-  subsample_ratio <- 0.3
+  subsample_ratio <- 0.7
   # lambda_reg <- sqrt(log(ncol(W)) / (10 * subsample_ratio * nrow(Y)))
 
   # /*+++++++++++++++++++++++++++++++++++
@@ -37,7 +41,7 @@ run_DML_OF_c_analysis <- function(gam_formula, x_vars, w_vars, reg_data, pN, pCo
       T = T_mat,
       X = X,
       W = W,
-      X_test = X,
+      X_test = X_cv,
       subsample_ratio = subsample_ratio
     )
 
@@ -76,7 +80,8 @@ run_DML_OF_c_analysis <- function(gam_formula, x_vars, w_vars, reg_data, pN, pCo
     .[, profit := pCorn * value - pN * N] %>%
     .[, .SD[which.max(profit), ], by = aunit_id] %>%
     .[, .(aunit_id, N)] %>%
-    setnames("N", "opt_N_hat")
+    setnames("N", "opt_N_hat") %>%
+    .[, sim := cv_data$sim]
 
   return(eonr)
 }
